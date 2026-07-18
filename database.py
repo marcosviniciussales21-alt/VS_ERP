@@ -1,6 +1,7 @@
 import sqlite3
 from pathlib import Path
 import hashlib
+from datetime import datetime
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "vs_erp.db"
@@ -53,6 +54,20 @@ class Database:
                     cpf_cnpj TEXT,
                     telefone TEXT,
                     email TEXT
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS movimentacoes_estoque (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    produto_id INTEGER NOT NULL,
+                    tipo TEXT NOT NULL,
+                    quantidade REAL NOT NULL,
+                    estoque_anterior REAL NOT NULL,
+                    estoque_atual REAL NOT NULL,
+                    observacao TEXT,
+                    data_hora TEXT NOT NULL,
+                    FOREIGN KEY (produto_id) REFERENCES produtos(id)
                 )
             """)
 
@@ -254,3 +269,155 @@ class Database:
             )
 
             conexao.commit()
+
+    def registrar_entrada(self, produto_id, quantidade, observacao=""):
+        if quantidade <= 0:
+            raise ValueError("A quantidade deve ser maior que zero.")
+
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute(
+                "SELECT estoque FROM produtos WHERE id = ?",
+                (produto_id,)
+            )
+
+            resultado = cursor.fetchone()
+
+            if resultado is None:
+                raise ValueError("Produto não encontrado.")
+
+            estoque_anterior = float(resultado[0] or 0)
+            estoque_atual = estoque_anterior + quantidade
+
+            cursor.execute("""
+                UPDATE produtos
+                SET estoque = ?
+                WHERE id = ?
+            """, (
+                estoque_atual,
+                produto_id
+            ))
+
+            cursor.execute("""
+                INSERT INTO movimentacoes_estoque (
+                    produto_id,
+                    tipo,
+                    quantidade,
+                    estoque_anterior,
+                    estoque_atual,
+                    observacao,
+                    data_hora
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                produto_id,
+                "ENTRADA",
+                quantidade,
+                estoque_anterior,
+                estoque_atual,
+                observacao,
+                datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+            ))
+
+            conexao.commit()
+
+    def registrar_saida(self, produto_id, quantidade, observacao=""):
+        if quantidade <= 0:
+            raise ValueError("A quantidade deve ser maior que zero.")
+
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute(
+                "SELECT estoque FROM produtos WHERE id = ?",
+                (produto_id,)
+            )
+
+            resultado = cursor.fetchone()
+
+            if resultado is None:
+                raise ValueError("Produto não encontrado.")
+
+            estoque_anterior = float(resultado[0] or 0)
+
+            if quantidade > estoque_anterior:
+                raise ValueError(
+                    "Estoque insuficiente para realizar a saída."
+                )
+
+            estoque_atual = estoque_anterior - quantidade
+
+            cursor.execute("""
+                UPDATE produtos
+                SET estoque = ?
+                WHERE id = ?
+            """, (
+                estoque_atual,
+                produto_id
+            ))
+
+            cursor.execute("""
+                INSERT INTO movimentacoes_estoque (
+                    produto_id,
+                    tipo,
+                    quantidade,
+                    estoque_anterior,
+                    estoque_atual,
+                    observacao,
+                    data_hora
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                produto_id,
+                "SAÍDA",
+                quantidade,
+                estoque_anterior,
+                estoque_atual,
+                observacao,
+                datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+            ))
+
+            conexao.commit()
+
+    def listar_movimentacoes(self):
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute("""
+                SELECT
+                    m.id,
+                    p.codigo,
+                    p.nome,
+                    m.tipo,
+                    m.quantidade,
+                    m.estoque_anterior,
+                    m.estoque_atual,
+                    m.observacao,
+                    m.data_hora
+                FROM movimentacoes_estoque m
+                INNER JOIN produtos p
+                    ON p.id = m.produto_id
+                ORDER BY m.id DESC
+            """)
+
+            return cursor.fetchall()
+
+    def listar_produtos_estoque_baixo(self):
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute("""
+                SELECT
+                    id,
+                    codigo,
+                    nome,
+                    categoria,
+                    estoque,
+                    estoque_minimo
+                FROM produtos
+                WHERE estoque <= estoque_minimo
+                ORDER BY estoque ASC, nome ASC
+            """)
+
+            return cursor.fetchall()

@@ -21,7 +21,9 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QDoubleSpinBox,
     QDialogButtonBox,
+    QComboBox,
 )
+
 
 from database import Database
 
@@ -67,7 +69,7 @@ class ProdutoDialog(QDialog):
         layout.addRow("Categoria:", self.categoria)
         layout.addRow("Preço de compra:", self.preco_compra)
         layout.addRow("Preço de venda:", self.preco_venda)
-        layout.addRow("Estoque:", self.estoque)
+        layout.addRow("Estoque inicial:", self.estoque)
         layout.addRow("Estoque mínimo:", self.estoque_minimo)
 
         botoes = QDialogButtonBox(
@@ -81,33 +83,13 @@ class ProdutoDialog(QDialog):
         layout.addRow(botoes)
 
         if produto:
-            self.codigo.setText(
-                produto[1] if produto[1] else ""
-            )
-
-            self.nome.setText(
-                produto[2] if produto[2] else ""
-            )
-
-            self.categoria.setText(
-                produto[3] if produto[3] else ""
-            )
-
-            self.preco_compra.setValue(
-                float(produto[4] or 0)
-            )
-
-            self.preco_venda.setValue(
-                float(produto[5] or 0)
-            )
-
-            self.estoque.setValue(
-                float(produto[6] or 0)
-            )
-
-            self.estoque_minimo.setValue(
-                float(produto[7] or 0)
-            )
+            self.codigo.setText(produto[1] or "")
+            self.nome.setText(produto[2] or "")
+            self.categoria.setText(produto[3] or "")
+            self.preco_compra.setValue(float(produto[4] or 0))
+            self.preco_venda.setValue(float(produto[5] or 0))
+            self.estoque.setValue(float(produto[6] or 0))
+            self.estoque_minimo.setValue(float(produto[7] or 0))
 
     def obter_dados(self):
         return {
@@ -121,6 +103,88 @@ class ProdutoDialog(QDialog):
         }
 
 
+class MovimentacaoDialog(QDialog):
+    def __init__(self, database, tipo, parent=None):
+        super().__init__(parent)
+
+        self.database = database
+        self.tipo = tipo
+
+        self.setWindowTitle(
+            "Entrada de Mercadoria"
+            if tipo == "ENTRADA"
+            else "Saída de Mercadoria"
+        )
+
+        self.resize(500, 300)
+
+        layout = QFormLayout(self)
+
+        self.produto = QComboBox()
+
+        produtos = self.database.listar_produtos()
+
+        for item in produtos:
+            texto = (
+                f"{item[1] or 'SEM CÓDIGO'} - "
+                f"{item[2]} | Estoque: {item[6]}"
+            )
+
+            self.produto.addItem(
+                texto,
+                item[0]
+            )
+
+        self.quantidade = QDoubleSpinBox()
+        self.quantidade.setMaximum(999999999)
+        self.quantidade.setDecimals(2)
+        self.quantidade.setMinimum(0.01)
+
+        self.observacao = QLineEdit()
+        self.observacao.setPlaceholderText(
+            "Observação opcional"
+        )
+
+        layout.addRow(
+            "Produto:",
+            self.produto
+        )
+
+        layout.addRow(
+            "Quantidade:",
+            self.quantidade
+        )
+
+        layout.addRow(
+            "Observação:",
+            self.observacao
+        )
+
+        botoes = QDialogButtonBox(
+            QDialogButtonBox.Save
+            | QDialogButtonBox.Cancel
+        )
+
+        botoes.accepted.connect(
+            self.accept
+        )
+
+        botoes.rejected.connect(
+            self.reject
+        )
+
+        layout.addRow(
+            botoes
+        )
+
+    def obter_dados(self):
+        return {
+            "produto_id": self.produto.currentData(),
+            "quantidade": self.quantidade.value(),
+            "observacao": self.observacao.text().strip(),
+        }
+
+
 class LoginWindow(QWidget):
     def __init__(self, database, login_sucesso):
         super().__init__()
@@ -128,8 +192,14 @@ class LoginWindow(QWidget):
         self.database = database
         self.login_sucesso = login_sucesso
 
-        self.setWindowTitle("VS ERP - Login")
-        self.resize(450, 500)
+        self.setWindowTitle(
+            "VS ERP - Login"
+        )
+
+        self.resize(
+            450,
+            500
+        )
 
         self.criar_interface()
 
@@ -143,9 +213,13 @@ class LoginWindow(QWidget):
             60
         )
 
-        layout.setSpacing(15)
+        layout.setSpacing(
+            15
+        )
 
-        titulo = QLabel("VS ERP")
+        titulo = QLabel(
+            "VS ERP"
+        )
 
         titulo.setAlignment(
             Qt.AlignCenter
@@ -168,10 +242,7 @@ class LoginWindow(QWidget):
         )
 
         subtitulo.setStyleSheet(
-            """
-            font-size: 16px;
-            color: #334155;
-            """
+            "font-size: 16px; color: #334155;"
         )
 
         self.campo_usuario = QLineEdit()
@@ -221,7 +292,6 @@ class LoginWindow(QWidget):
                 color: white;
                 border: none;
                 border-radius: 6px;
-                font-size: 15px;
                 font-weight: bold;
             }
 
@@ -246,38 +316,14 @@ class LoginWindow(QWidget):
         )
 
         layout.addStretch()
-        layout.addWidget(
-            titulo
-        )
-
-        layout.addWidget(
-            subtitulo
-        )
-
-        layout.addSpacing(
-            30
-        )
-
-        layout.addWidget(
-            self.campo_usuario
-        )
-
-        layout.addWidget(
-            self.campo_senha
-        )
-
-        layout.addWidget(
-            botao
-        )
-
-        layout.addSpacing(
-            20
-        )
-
-        layout.addWidget(
-            info
-        )
-
+        layout.addWidget(titulo)
+        layout.addWidget(subtitulo)
+        layout.addSpacing(30)
+        layout.addWidget(self.campo_usuario)
+        layout.addWidget(self.campo_senha)
+        layout.addWidget(botao)
+        layout.addSpacing(20)
+        layout.addWidget(info)
         layout.addStretch()
 
     def entrar(self):
@@ -317,11 +363,11 @@ class Dashboard(QWidget):
 
         self.database = database
 
-        self.layout_principal = QVBoxLayout(
+        layout = QVBoxLayout(
             self
         )
 
-        self.layout_principal.setContentsMargins(
+        layout.setContentsMargins(
             30,
             30,
             30,
@@ -340,24 +386,39 @@ class Dashboard(QWidget):
             """
         )
 
-        self.layout_principal.addWidget(
+        layout.addWidget(
             titulo
         )
 
         self.cards_layout = QHBoxLayout()
 
-        self.label_produtos = QLabel()
-        self.label_clientes = QLabel()
+        self.label_produtos = self.criar_card(
+            "Produtos",
+            "0"
+        )
 
-        self.criar_cards()
+        self.label_clientes = self.criar_card(
+            "Clientes",
+            "0"
+        )
 
-        self.layout_principal.addLayout(
+        self.label_estoque_baixo = self.criar_card(
+            "Estoque Baixo",
+            "0"
+        )
+
+        self.criar_card(
+            "Vendas Hoje",
+            "R$ 0,00"
+        )
+
+        layout.addLayout(
             self.cards_layout
         )
 
         mensagem = QLabel(
-            "Bem-vindo ao VS ERP!\n\n"
-            "Versão 1.1 - Cadastro de Produtos"
+            "VS ERP V1.2\n\n"
+            "Produtos, estoque, entradas e saídas."
         )
 
         mensagem.setAlignment(
@@ -371,11 +432,13 @@ class Dashboard(QWidget):
             """
         )
 
-        self.layout_principal.addWidget(
+        layout.addWidget(
             mensagem
         )
 
-        self.layout_principal.addStretch()
+        layout.addStretch()
+
+        self.atualizar()
 
     def criar_card(
         self,
@@ -393,7 +456,7 @@ class Dashboard(QWidget):
             """
         )
 
-        layout = QVBoxLayout(
+        card_layout = QVBoxLayout(
             card
         )
 
@@ -402,10 +465,7 @@ class Dashboard(QWidget):
         )
 
         label_titulo.setStyleSheet(
-            """
-            color: #64748b;
-            font-size: 14px;
-            """
+            "color: #64748b;"
         )
 
         label_valor = QLabel(
@@ -420,11 +480,11 @@ class Dashboard(QWidget):
             """
         )
 
-        layout.addWidget(
+        card_layout.addWidget(
             label_titulo
         )
 
-        layout.addWidget(
+        card_layout.addWidget(
             label_valor
         )
 
@@ -433,31 +493,6 @@ class Dashboard(QWidget):
         )
 
         return label_valor
-
-    def criar_cards(self):
-        self.criar_card(
-            "Vendas Hoje",
-            "R$ 0,00"
-        )
-
-        self.criar_card(
-            "Lucro Hoje",
-            "R$ 0,00"
-        )
-
-        self.label_produtos = self.criar_card(
-            "Produtos",
-            str(
-                self.database.contar_produtos()
-            )
-        )
-
-        self.label_clientes = self.criar_card(
-            "Clientes",
-            str(
-                self.database.contar_clientes()
-            )
-        )
 
     def atualizar(self):
         self.label_produtos.setText(
@@ -472,9 +507,24 @@ class Dashboard(QWidget):
             )
         )
 
+        estoque_baixo = (
+            self.database
+            .listar_produtos_estoque_baixo()
+        )
+
+        self.label_estoque_baixo.setText(
+            str(
+                len(estoque_baixo)
+            )
+        )
+
 
 class ProdutosPage(QWidget):
-    def __init__(self, database, dashboard):
+    def __init__(
+        self,
+        database,
+        dashboard
+    ):
         super().__init__()
 
         self.database = database
@@ -504,7 +554,6 @@ class ProdutosPage(QWidget):
             """
             font-size: 28px;
             font-weight: bold;
-            color: #0f172a;
             """
         )
 
@@ -530,23 +579,6 @@ class ProdutosPage(QWidget):
 
         botao_novo.clicked.connect(
             self.novo_produto
-        )
-
-        botao_novo.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #2563eb;
-                color: white;
-                border: none;
-                border-radius: 6px;
-                padding: 10px 18px;
-                font-weight: bold;
-            }
-
-            QPushButton:hover {
-                background-color: #1d4ed8;
-            }
-            """
         )
 
         topo.addWidget(
@@ -598,31 +630,25 @@ class ProdutosPage(QWidget):
 
         botoes = QHBoxLayout()
 
-        botao_editar = QPushButton(
+        editar = QPushButton(
             "Editar"
         )
 
-        botao_excluir = QPushButton(
+        excluir = QPushButton(
             "Excluir"
         )
 
-        botao_editar.clicked.connect(
+        editar.clicked.connect(
             self.editar_produto
         )
 
-        botao_excluir.clicked.connect(
+        excluir.clicked.connect(
             self.excluir_produto
         )
 
         botoes.addStretch()
-
-        botoes.addWidget(
-            botao_editar
-        )
-
-        botoes.addWidget(
-            botao_excluir
-        )
+        botoes.addWidget(editar)
+        botoes.addWidget(excluir)
 
         layout.addLayout(
             botoes
@@ -656,14 +682,12 @@ class ProdutosPage(QWidget):
             for coluna, valor in enumerate(
                 valores
             ):
-                item = QTableWidgetItem(
-                    str(valor)
-                )
-
                 self.tabela.setItem(
                     linha,
                     coluna,
-                    item
+                    QTableWidgetItem(
+                        str(valor)
+                    )
                 )
 
     def novo_produto(self):
@@ -696,15 +720,14 @@ class ProdutosPage(QWidget):
                 dados["estoque_minimo"],
             )
 
+            self.carregar_produtos()
+            self.dashboard.atualizar()
+
             QMessageBox.information(
                 self,
                 "VS ERP",
                 "Produto cadastrado com sucesso."
             )
-
-            self.carregar_produtos()
-
-            self.dashboard.atualizar()
 
         except sqlite3.IntegrityError:
             QMessageBox.critical(
@@ -725,16 +748,11 @@ class ProdutosPage(QWidget):
 
             return None
 
-        item = self.tabela.item(
-            linha,
-            0
-        )
-
-        if not item:
-            return None
-
         return int(
-            item.text()
+            self.tabela.item(
+                linha,
+                0
+            ).text()
         )
 
     def editar_produto(self):
@@ -747,15 +765,6 @@ class ProdutosPage(QWidget):
             produto_id
         )
 
-        if not produto:
-            QMessageBox.warning(
-                self,
-                "VS ERP",
-                "Produto não encontrado."
-            )
-
-            return
-
         dialog = ProdutoDialog(
             self,
             produto
@@ -765,15 +774,6 @@ class ProdutosPage(QWidget):
             return
 
         dados = dialog.obter_dados()
-
-        if not dados["nome"]:
-            QMessageBox.warning(
-                self,
-                "VS ERP",
-                "O nome do produto é obrigatório."
-            )
-
-            return
 
         try:
             self.database.atualizar_produto(
@@ -787,21 +787,20 @@ class ProdutosPage(QWidget):
                 dados["estoque_minimo"],
             )
 
+            self.carregar_produtos()
+            self.dashboard.atualizar()
+
             QMessageBox.information(
                 self,
                 "VS ERP",
-                "Produto atualizado com sucesso."
+                "Produto atualizado."
             )
-
-            self.carregar_produtos()
-
-            self.dashboard.atualizar()
 
         except sqlite3.IntegrityError:
             QMessageBox.critical(
                 self,
                 "VS ERP",
-                "Já existe outro produto com esse código."
+                "Código de produto duplicado."
             )
 
     def excluir_produto(self):
@@ -813,7 +812,7 @@ class ProdutosPage(QWidget):
         resposta = QMessageBox.question(
             self,
             "VS ERP",
-            "Deseja realmente excluir o produto selecionado?",
+            "Deseja excluir este produto?",
             QMessageBox.Yes
             | QMessageBox.No
         )
@@ -825,15 +824,210 @@ class ProdutosPage(QWidget):
             produto_id
         )
 
-        QMessageBox.information(
-            self,
-            "VS ERP",
-            "Produto excluído com sucesso."
+        self.carregar_produtos()
+        self.dashboard.atualizar()
+
+
+class EstoquePage(QWidget):
+    def __init__(
+        self,
+        database
+    ):
+        super().__init__()
+
+        self.database = database
+
+        layout = QVBoxLayout(
+            self
         )
 
-        self.carregar_produtos()
+        layout.setContentsMargins(
+            30,
+            30,
+            30,
+            30
+        )
 
-        self.dashboard.atualizar()
+        titulo = QLabel(
+            "Controle de Estoque"
+        )
+
+        titulo.setStyleSheet(
+            """
+            font-size: 28px;
+            font-weight: bold;
+            """
+        )
+
+        layout.addWidget(
+            titulo
+        )
+
+        self.tabela = QTableWidget()
+
+        self.tabela.setColumnCount(
+            6
+        )
+
+        self.tabela.setHorizontalHeaderLabels(
+            [
+                "Código",
+                "Produto",
+                "Categoria",
+                "Estoque Atual",
+                "Estoque Mínimo",
+                "Situação",
+            ]
+        )
+
+        self.tabela.horizontalHeader().setSectionResizeMode(
+            QHeaderView.Stretch
+        )
+
+        self.tabela.setEditTriggers(
+            QTableWidget.NoEditTriggers
+        )
+
+        layout.addWidget(
+            self.tabela
+        )
+
+        self.carregar()
+
+    def carregar(self):
+        produtos = self.database.listar_produtos()
+
+        self.tabela.setRowCount(
+            len(produtos)
+        )
+
+        for linha, produto in enumerate(
+            produtos
+        ):
+            estoque = float(
+                produto[6] or 0
+            )
+
+            minimo = float(
+                produto[7] or 0
+            )
+
+            situacao = (
+                "ESTOQUE BAIXO"
+                if estoque <= minimo
+                else "NORMAL"
+            )
+
+            valores = [
+                produto[1] or "",
+                produto[2],
+                produto[3] or "",
+                estoque,
+                minimo,
+                situacao,
+            ]
+
+            for coluna, valor in enumerate(
+                valores
+            ):
+                self.tabela.setItem(
+                    linha,
+                    coluna,
+                    QTableWidgetItem(
+                        str(valor)
+                    )
+                )
+
+
+class MovimentacoesPage(QWidget):
+    def __init__(
+        self,
+        database
+    ):
+        super().__init__()
+
+        self.database = database
+
+        layout = QVBoxLayout(
+            self
+        )
+
+        layout.setContentsMargins(
+            30,
+            30,
+            30,
+            30
+        )
+
+        titulo = QLabel(
+            "Histórico de Movimentações"
+        )
+
+        titulo.setStyleSheet(
+            """
+            font-size: 28px;
+            font-weight: bold;
+            """
+        )
+
+        layout.addWidget(
+            titulo
+        )
+
+        self.tabela = QTableWidget()
+
+        self.tabela.setColumnCount(
+            9
+        )
+
+        self.tabela.setHorizontalHeaderLabels(
+            [
+                "ID",
+                "Código",
+                "Produto",
+                "Tipo",
+                "Quantidade",
+                "Estoque Anterior",
+                "Estoque Atual",
+                "Observação",
+                "Data/Hora",
+            ]
+        )
+
+        self.tabela.horizontalHeader().setSectionResizeMode(
+            QHeaderView.Stretch
+        )
+
+        self.tabela.setEditTriggers(
+            QTableWidget.NoEditTriggers
+        )
+
+        layout.addWidget(
+            self.tabela
+        )
+
+        self.carregar()
+
+    def carregar(self):
+        dados = self.database.listar_movimentacoes()
+
+        self.tabela.setRowCount(
+            len(dados)
+        )
+
+        for linha, movimentacao in enumerate(
+            dados
+        ):
+            for coluna, valor in enumerate(
+                movimentacao
+            ):
+                self.tabela.setItem(
+                    linha,
+                    coluna,
+                    QTableWidgetItem(
+                        str(valor or "")
+                    )
+                )
 
 
 class MainWindow(QMainWindow):
@@ -852,8 +1046,8 @@ class MainWindow(QMainWindow):
         )
 
         self.resize(
-            1200,
-            750
+            1250,
+            780
         )
 
         self.criar_interface()
@@ -942,6 +1136,14 @@ class MainWindow(QMainWindow):
             self.dashboard
         )
 
+        self.estoque_page = EstoquePage(
+            self.database
+        )
+
+        self.movimentacoes_page = MovimentacoesPage(
+            self.database
+        )
+
         self.paginas.addWidget(
             self.dashboard
         )
@@ -950,13 +1152,38 @@ class MainWindow(QMainWindow):
             self.produtos_page
         )
 
-        opcoes = [
-            "Dashboard",
+        self.paginas.addWidget(
+            self.estoque_page
+        )
+
+        self.paginas.addWidget(
+            self.movimentacoes_page
+        )
+
+        botoes = [
+            ("Dashboard", self.abrir_dashboard),
+            ("Produtos", self.abrir_produtos),
+            ("Estoque", self.abrir_estoque),
+            ("Entradas", self.registrar_entrada),
+            ("Saídas", self.registrar_saida),
+            ("Movimentações", self.abrir_movimentacoes),
+        ]
+
+        for texto, funcao in botoes:
+            botao = QPushButton(
+                texto
+            )
+
+            botao.clicked.connect(
+                funcao
+            )
+
+            menu_layout.addWidget(
+                botao
+            )
+
+        outros = [
             "Caixa",
-            "Produtos",
-            "Estoque",
-            "Entradas",
-            "Saídas",
             "Clientes",
             "Fornecedores",
             "Fluxo de Caixa",
@@ -964,30 +1191,17 @@ class MainWindow(QMainWindow):
             "Configurações",
         ]
 
-        for opcao in opcoes:
+        for nome in outros:
             botao = QPushButton(
-                opcao
+                nome
             )
 
-            if opcao == "Dashboard":
-                botao.clicked.connect(
-                    lambda:
-                    self.abrir_dashboard()
+            botao.clicked.connect(
+                lambda checked=False, n=nome:
+                self.modulo_futuro(
+                    n
                 )
-
-            elif opcao == "Produtos":
-                botao.clicked.connect(
-                    lambda:
-                    self.abrir_produtos()
-                )
-
-            else:
-                botao.clicked.connect(
-                    lambda checked=False, nome=opcao:
-                    self.modulo_futuro(
-                        nome
-                    )
-                )
+            )
 
             menu_layout.addWidget(
                 botao
@@ -1019,8 +1233,14 @@ class MainWindow(QMainWindow):
             self.paginas
         )
 
-    def abrir_dashboard(self):
+    def atualizar_telas(self):
         self.dashboard.atualizar()
+        self.produtos_page.carregar_produtos()
+        self.estoque_page.carregar()
+        self.movimentacoes_page.carregar()
+
+    def abrir_dashboard(self):
+        self.atualizar_telas()
 
         self.paginas.setCurrentWidget(
             self.dashboard
@@ -1033,6 +1253,106 @@ class MainWindow(QMainWindow):
             self.produtos_page
         )
 
+    def abrir_estoque(self):
+        self.estoque_page.carregar()
+
+        self.paginas.setCurrentWidget(
+            self.estoque_page
+        )
+
+    def abrir_movimentacoes(self):
+        self.movimentacoes_page.carregar()
+
+        self.paginas.setCurrentWidget(
+            self.movimentacoes_page
+        )
+
+    def registrar_entrada(self):
+        if self.database.contar_produtos() == 0:
+            QMessageBox.warning(
+                self,
+                "VS ERP",
+                "Cadastre um produto primeiro."
+            )
+
+            return
+
+        dialog = MovimentacaoDialog(
+            self.database,
+            "ENTRADA",
+            self
+        )
+
+        if dialog.exec() != QDialog.Accepted:
+            return
+
+        dados = dialog.obter_dados()
+
+        try:
+            self.database.registrar_entrada(
+                dados["produto_id"],
+                dados["quantidade"],
+                dados["observacao"]
+            )
+
+            self.atualizar_telas()
+
+            QMessageBox.information(
+                self,
+                "VS ERP",
+                "Entrada registrada com sucesso."
+            )
+
+        except ValueError as erro:
+            QMessageBox.warning(
+                self,
+                "VS ERP",
+                str(erro)
+            )
+
+    def registrar_saida(self):
+        if self.database.contar_produtos() == 0:
+            QMessageBox.warning(
+                self,
+                "VS ERP",
+                "Cadastre um produto primeiro."
+            )
+
+            return
+
+        dialog = MovimentacaoDialog(
+            self.database,
+            "SAÍDA",
+            self
+        )
+
+        if dialog.exec() != QDialog.Accepted:
+            return
+
+        dados = dialog.obter_dados()
+
+        try:
+            self.database.registrar_saida(
+                dados["produto_id"],
+                dados["quantidade"],
+                dados["observacao"]
+            )
+
+            self.atualizar_telas()
+
+            QMessageBox.information(
+                self,
+                "VS ERP",
+                "Saída registrada com sucesso."
+            )
+
+        except ValueError as erro:
+            QMessageBox.warning(
+                self,
+                "VS ERP",
+                str(erro)
+            )
+
     def modulo_futuro(
         self,
         nome
@@ -1040,7 +1360,7 @@ class MainWindow(QMainWindow):
         QMessageBox.information(
             self,
             "VS ERP",
-            f"O módulo '{nome}' será adicionado "
+            f"O módulo '{nome}' será implementado "
             "nas próximas versões."
         )
 
@@ -1059,16 +1379,17 @@ class Sistema:
                 color: #0f172a;
             }
 
-            QLineEdit {
+            QLineEdit,
+            QComboBox,
+            QDoubleSpinBox {
                 background-color: white;
                 border: 1px solid #cbd5e1;
                 border-radius: 6px;
-                padding: 8px;
-                font-size: 14px;
+                padding: 7px;
             }
 
-            QLineEdit:focus {
-                border: 2px solid #2563eb;
+            QPushButton {
+                padding: 8px 14px;
             }
 
             QTableWidget {
@@ -1081,13 +1402,6 @@ class Sistema:
                 padding: 8px;
                 border: none;
                 font-weight: bold;
-            }
-
-            QDoubleSpinBox {
-                background-color: white;
-                border: 1px solid #cbd5e1;
-                border-radius: 6px;
-                padding: 6px;
             }
             """
         )
