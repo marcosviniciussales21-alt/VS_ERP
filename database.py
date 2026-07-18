@@ -461,7 +461,6 @@ class Database:
 
             total_venda = 0
 
-            # Validação de estoque antes de registrar qualquer coisa
             for item in itens:
                 produto_id = item["produto_id"]
                 quantidade = float(item["quantidade"])
@@ -472,7 +471,7 @@ class Database:
                     )
 
                 cursor.execute("""
-                    SELECT nome, estoque, preco_venda
+                    SELECT nome, estoque
                     FROM produtos
                     WHERE id = ?
                 """, (produto_id,))
@@ -661,3 +660,130 @@ class Database:
             ))
 
             return int(cursor.fetchone()[0] or 0)
+
+    def cadastrar_cliente(
+        self,
+        nome,
+        cpf_cnpj,
+        telefone,
+        email
+    ):
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute("""
+                INSERT INTO clientes (
+                    nome,
+                    cpf_cnpj,
+                    telefone,
+                    email
+                )
+                VALUES (?, ?, ?, ?)
+            """, (
+                nome,
+                cpf_cnpj,
+                telefone,
+                email
+            ))
+
+            conexao.commit()
+
+    def listar_clientes(self, pesquisa=""):
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            if pesquisa:
+                termo = f"%{pesquisa}%"
+
+                cursor.execute("""
+                    SELECT
+                        id,
+                        nome,
+                        cpf_cnpj,
+                        telefone,
+                        email
+                    FROM clientes
+                    WHERE nome LIKE ?
+                    OR cpf_cnpj LIKE ?
+                    OR telefone LIKE ?
+                    OR email LIKE ?
+                    ORDER BY nome
+                """, (
+                    termo,
+                    termo,
+                    termo,
+                    termo
+                ))
+
+            else:
+                cursor.execute("""
+                    SELECT
+                        id,
+                        nome,
+                        cpf_cnpj,
+                        telefone,
+                        email
+                    FROM clientes
+                    ORDER BY nome
+                """)
+
+            return cursor.fetchall()
+
+    def buscar_cliente_por_id(self, cliente_id):
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute("""
+                SELECT
+                    id,
+                    nome,
+                    cpf_cnpj,
+                    telefone,
+                    email
+                FROM clientes
+                WHERE id = ?
+            """, (
+                cliente_id,
+            ))
+
+            return cursor.fetchone()
+
+    def atualizar_cliente(
+        self,
+        cliente_id,
+        nome,
+        cpf_cnpj,
+        telefone,
+        email
+    ):
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute("""
+                UPDATE clientes
+                SET
+                    nome = ?,
+                    cpf_cnpj = ?,
+                    telefone = ?,
+                    email = ?
+                WHERE id = ?
+            """, (
+                nome,
+                cpf_cnpj,
+                telefone,
+                email,
+                cliente_id
+            ))
+
+            conexao.commit()
+
+    def excluir_cliente(self, cliente_id):
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute(
+                "DELETE FROM clientes WHERE id = ?",
+                (cliente_id,)
+            )
+
+            conexao.commit()
