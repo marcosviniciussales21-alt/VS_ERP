@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 import hashlib
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "vs_erp.db"
@@ -19,7 +19,13 @@ class Database:
 
     @staticmethod
     def hash_senha(senha):
-        return hashlib.sha256(senha.encode("utf-8")).hexdigest()
+        return hashlib.sha256(
+            senha.encode("utf-8")
+        ).hexdigest()
+
+    # =====================================================
+    # CRIAÇÃO DAS TABELAS
+    # =====================================================
 
     def criar_tabelas(self):
         with self.conectar() as conexao:
@@ -80,7 +86,8 @@ class Database:
                     estoque_atual REAL NOT NULL,
                     observacao TEXT,
                     data_hora TEXT NOT NULL,
-                    FOREIGN KEY (produto_id) REFERENCES produtos(id)
+                    FOREIGN KEY (produto_id)
+                    REFERENCES produtos(id)
                 )
             """)
 
@@ -102,8 +109,10 @@ class Database:
                     quantidade REAL NOT NULL,
                     preco_unitario REAL NOT NULL,
                     subtotal REAL NOT NULL,
-                    FOREIGN KEY (venda_id) REFERENCES vendas(id),
-                    FOREIGN KEY (produto_id) REFERENCES produtos(id)
+                    FOREIGN KEY (venda_id)
+                    REFERENCES vendas(id),
+                    FOREIGN KEY (produto_id)
+                    REFERENCES produtos(id)
                 )
             """)
 
@@ -121,6 +130,10 @@ class Database:
             """)
 
             conexao.commit()
+
+    # =====================================================
+    # USUÁRIOS
+    # =====================================================
 
     def criar_admin_padrao(self):
         with self.conectar() as conexao:
@@ -156,7 +169,11 @@ class Database:
             cursor = conexao.cursor()
 
             cursor.execute("""
-                SELECT id, usuario, nome, perfil
+                SELECT
+                    id,
+                    usuario,
+                    nome,
+                    perfil
                 FROM usuarios
                 WHERE usuario = ?
                 AND senha = ?
@@ -175,19 +192,25 @@ class Database:
     def contar_produtos(self):
         with self.conectar() as conexao:
             cursor = conexao.cursor()
-            cursor.execute("SELECT COUNT(*) FROM produtos")
+            cursor.execute(
+                "SELECT COUNT(*) FROM produtos"
+            )
             return cursor.fetchone()[0]
 
     def contar_clientes(self):
         with self.conectar() as conexao:
             cursor = conexao.cursor()
-            cursor.execute("SELECT COUNT(*) FROM clientes")
+            cursor.execute(
+                "SELECT COUNT(*) FROM clientes"
+            )
             return cursor.fetchone()[0]
 
     def contar_fornecedores(self):
         with self.conectar() as conexao:
             cursor = conexao.cursor()
-            cursor.execute("SELECT COUNT(*) FROM fornecedores")
+            cursor.execute(
+                "SELECT COUNT(*) FROM fornecedores"
+            )
             return cursor.fetchone()[0]
 
     # =====================================================
@@ -257,6 +280,7 @@ class Database:
                     termo,
                     termo
                 ))
+
             else:
                 cursor.execute("""
                     SELECT
@@ -349,9 +373,16 @@ class Database:
     # ESTOQUE
     # =====================================================
 
-    def registrar_entrada(self, produto_id, quantidade, observacao=""):
+    def registrar_entrada(
+        self,
+        produto_id,
+        quantidade,
+        observacao=""
+    ):
         if quantidade <= 0:
-            raise ValueError("A quantidade deve ser maior que zero.")
+            raise ValueError(
+                "A quantidade deve ser maior que zero."
+            )
 
         with self.conectar() as conexao:
             cursor = conexao.cursor()
@@ -364,10 +395,17 @@ class Database:
             resultado = cursor.fetchone()
 
             if resultado is None:
-                raise ValueError("Produto não encontrado.")
+                raise ValueError(
+                    "Produto não encontrado."
+                )
 
-            estoque_anterior = float(resultado[0] or 0)
-            estoque_atual = estoque_anterior + quantidade
+            estoque_anterior = float(
+                resultado[0] or 0
+            )
+
+            estoque_atual = (
+                estoque_anterior + quantidade
+            )
 
             cursor.execute("""
                 UPDATE produtos
@@ -396,14 +434,23 @@ class Database:
                 estoque_anterior,
                 estoque_atual,
                 observacao,
-                datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                datetime.now().strftime(
+                    "%d/%m/%Y %H:%M:%S"
+                )
             ))
 
             conexao.commit()
 
-    def registrar_saida(self, produto_id, quantidade, observacao=""):
+    def registrar_saida(
+        self,
+        produto_id,
+        quantidade,
+        observacao=""
+    ):
         if quantidade <= 0:
-            raise ValueError("A quantidade deve ser maior que zero.")
+            raise ValueError(
+                "A quantidade deve ser maior que zero."
+            )
 
         with self.conectar() as conexao:
             cursor = conexao.cursor()
@@ -416,16 +463,22 @@ class Database:
             resultado = cursor.fetchone()
 
             if resultado is None:
-                raise ValueError("Produto não encontrado.")
+                raise ValueError(
+                    "Produto não encontrado."
+                )
 
-            estoque_anterior = float(resultado[0] or 0)
+            estoque_anterior = float(
+                resultado[0] or 0
+            )
 
             if quantidade > estoque_anterior:
                 raise ValueError(
-                    "Estoque insuficiente para realizar a saída."
+                    "Estoque insuficiente."
                 )
 
-            estoque_atual = estoque_anterior - quantidade
+            estoque_atual = (
+                estoque_anterior - quantidade
+            )
 
             cursor.execute("""
                 UPDATE produtos
@@ -454,7 +507,9 @@ class Database:
                 estoque_anterior,
                 estoque_atual,
                 observacao,
-                datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                datetime.now().strftime(
+                    "%d/%m/%Y %H:%M:%S"
+                )
             ))
 
             conexao.commit()
@@ -496,7 +551,7 @@ class Database:
                     estoque_minimo
                 FROM produtos
                 WHERE estoque <= estoque_minimo
-                ORDER BY estoque ASC, nome ASC
+                ORDER BY estoque ASC
             """)
 
             return cursor.fetchall()
@@ -512,7 +567,9 @@ class Database:
         observacao=""
     ):
         if not itens:
-            raise ValueError("A venda não possui itens.")
+            raise ValueError(
+                "A venda não possui itens."
+            )
 
         with self.conectar() as conexao:
             cursor = conexao.cursor()
@@ -521,15 +578,14 @@ class Database:
 
             for item in itens:
                 produto_id = item["produto_id"]
-                quantidade = float(item["quantidade"])
-
-                if quantidade <= 0:
-                    raise ValueError(
-                        "A quantidade dos itens deve ser maior que zero."
-                    )
+                quantidade = float(
+                    item["quantidade"]
+                )
 
                 cursor.execute("""
-                    SELECT nome, estoque
+                    SELECT
+                        nome,
+                        estoque
                     FROM produtos
                     WHERE id = ?
                 """, (
@@ -539,17 +595,21 @@ class Database:
                 produto = cursor.fetchone()
 
                 if produto is None:
-                    raise ValueError("Produto não encontrado.")
-
-                nome = produto[0]
-                estoque = float(produto[1] or 0)
-
-                if quantidade > estoque:
                     raise ValueError(
-                        f"Estoque insuficiente para o produto: {nome}"
+                        "Produto não encontrado."
                     )
 
-            data_hora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                if quantidade > float(
+                    produto[1] or 0
+                ):
+                    raise ValueError(
+                        f"Estoque insuficiente: "
+                        f"{produto[0]}"
+                    )
+
+            data_hora = datetime.now().strftime(
+                "%d/%m/%Y %H:%M:%S"
+            )
 
             cursor.execute("""
                 INSERT INTO vendas (
@@ -570,7 +630,9 @@ class Database:
 
             for item in itens:
                 produto_id = item["produto_id"]
-                quantidade = float(item["quantidade"])
+                quantidade = float(
+                    item["quantidade"]
+                )
 
                 cursor.execute("""
                     SELECT
@@ -586,11 +648,21 @@ class Database:
                 produto = cursor.fetchone()
 
                 nome = produto[0]
-                estoque_anterior = float(produto[1] or 0)
-                preco_unitario = float(produto[2] or 0)
+                estoque_anterior = float(
+                    produto[1] or 0
+                )
 
-                subtotal = quantidade * preco_unitario
-                estoque_atual = estoque_anterior - quantidade
+                preco_unitario = float(
+                    produto[2] or 0
+                )
+
+                subtotal = (
+                    quantidade * preco_unitario
+                )
+
+                estoque_atual = (
+                    estoque_anterior - quantidade
+                )
 
                 total_venda += subtotal
 
@@ -650,7 +722,6 @@ class Database:
                 venda_id
             ))
 
-            # Lança automaticamente a venda como entrada no fluxo
             cursor.execute("""
                 INSERT INTO fluxo_caixa (
                     tipo,
@@ -693,7 +764,10 @@ class Database:
 
             return cursor.fetchall()
 
-    def listar_itens_venda(self, venda_id):
+    def listar_itens_venda(
+        self,
+        venda_id
+    ):
         with self.conectar() as conexao:
             cursor = conexao.cursor()
 
@@ -708,7 +782,6 @@ class Database:
                 INNER JOIN produtos p
                     ON p.id = i.produto_id
                 WHERE i.venda_id = ?
-                ORDER BY i.id
             """, (
                 venda_id,
             ))
@@ -716,23 +789,30 @@ class Database:
             return cursor.fetchall()
 
     def total_vendas_hoje(self):
-        hoje = date.today().strftime("%d/%m/%Y")
+        hoje = date.today().strftime(
+            "%d/%m/%Y"
+        )
 
         with self.conectar() as conexao:
             cursor = conexao.cursor()
 
             cursor.execute("""
-                SELECT COALESCE(SUM(total), 0)
+                SELECT
+                    COALESCE(SUM(total), 0)
                 FROM vendas
                 WHERE data_hora LIKE ?
             """, (
                 f"{hoje}%",
             ))
 
-            return float(cursor.fetchone()[0] or 0)
+            return float(
+                cursor.fetchone()[0] or 0
+            )
 
     def quantidade_vendas_hoje(self):
-        hoje = date.today().strftime("%d/%m/%Y")
+        hoje = date.today().strftime(
+            "%d/%m/%Y"
+        )
 
         with self.conectar() as conexao:
             cursor = conexao.cursor()
@@ -745,13 +825,21 @@ class Database:
                 f"{hoje}%",
             ))
 
-            return int(cursor.fetchone()[0] or 0)
+            return int(
+                cursor.fetchone()[0] or 0
+            )
 
     # =====================================================
     # CLIENTES
     # =====================================================
 
-    def cadastrar_cliente(self, nome, cpf_cnpj, telefone, email):
+    def cadastrar_cliente(
+        self,
+        nome,
+        cpf_cnpj,
+        telefone,
+        email
+    ):
         with self.conectar() as conexao:
             cursor = conexao.cursor()
 
@@ -772,7 +860,10 @@ class Database:
 
             conexao.commit()
 
-    def listar_clientes(self, pesquisa=""):
+    def listar_clientes(
+        self,
+        pesquisa=""
+    ):
         with self.conectar() as conexao:
             cursor = conexao.cursor()
 
@@ -798,6 +889,7 @@ class Database:
                     termo,
                     termo
                 ))
+
             else:
                 cursor.execute("""
                     SELECT
@@ -812,7 +904,10 @@ class Database:
 
             return cursor.fetchall()
 
-    def buscar_cliente_por_id(self, cliente_id):
+    def buscar_cliente_por_id(
+        self,
+        cliente_id
+    ):
         with self.conectar() as conexao:
             cursor = conexao.cursor()
 
@@ -860,7 +955,10 @@ class Database:
 
             conexao.commit()
 
-    def excluir_cliente(self, cliente_id):
+    def excluir_cliente(
+        self,
+        cliente_id
+    ):
         with self.conectar() as conexao:
             cursor = conexao.cursor()
 
@@ -905,7 +1003,10 @@ class Database:
 
             conexao.commit()
 
-    def listar_fornecedores(self, pesquisa=""):
+    def listar_fornecedores(
+        self,
+        pesquisa=""
+    ):
         with self.conectar() as conexao:
             cursor = conexao.cursor()
 
@@ -934,6 +1035,7 @@ class Database:
                     termo,
                     termo
                 ))
+
             else:
                 cursor.execute("""
                     SELECT
@@ -949,7 +1051,10 @@ class Database:
 
             return cursor.fetchall()
 
-    def buscar_fornecedor_por_id(self, fornecedor_id):
+    def buscar_fornecedor_por_id(
+        self,
+        fornecedor_id
+    ):
         with self.conectar() as conexao:
             cursor = conexao.cursor()
 
@@ -1001,7 +1106,10 @@ class Database:
 
             conexao.commit()
 
-    def excluir_fornecedor(self, fornecedor_id):
+    def excluir_fornecedor(
+        self,
+        fornecedor_id
+    ):
         with self.conectar() as conexao:
             cursor = conexao.cursor()
 
@@ -1027,14 +1135,12 @@ class Database:
     ):
         tipo = tipo.upper().strip()
 
-        if tipo not in ("ENTRADA", "SAÍDA"):
+        if tipo not in (
+            "ENTRADA",
+            "SAÍDA"
+        ):
             raise ValueError(
-                "O tipo deve ser ENTRADA ou SAÍDA."
-            )
-
-        if not descricao.strip():
-            raise ValueError(
-                "A descrição é obrigatória."
+                "Tipo de movimento inválido."
             )
 
         if valor <= 0:
@@ -1058,17 +1164,22 @@ class Database:
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (
                 tipo,
-                descricao.strip(),
-                categoria.strip(),
-                float(valor),
-                forma_pagamento.strip(),
-                datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
-                observacao.strip()
+                descricao,
+                categoria,
+                valor,
+                forma_pagamento,
+                datetime.now().strftime(
+                    "%d/%m/%Y %H:%M:%S"
+                ),
+                observacao
             ))
 
             conexao.commit()
 
-    def listar_fluxo_caixa(self, pesquisa=""):
+    def listar_fluxo_caixa(
+        self,
+        pesquisa=""
+    ):
         with self.conectar() as conexao:
             cursor = conexao.cursor()
 
@@ -1090,17 +1201,14 @@ class Database:
                     OR descricao LIKE ?
                     OR categoria LIKE ?
                     OR forma_pagamento LIKE ?
-                    OR data_hora LIKE ?
-                    OR observacao LIKE ?
                     ORDER BY id DESC
                 """, (
                     termo,
                     termo,
                     termo,
-                    termo,
-                    termo,
                     termo
                 ))
+
             else:
                 cursor.execute("""
                     SELECT
@@ -1118,7 +1226,10 @@ class Database:
 
             return cursor.fetchall()
 
-    def excluir_movimento_caixa(self, movimento_id):
+    def excluir_movimento_caixa(
+        self,
+        movimento_id
+    ):
         with self.conectar() as conexao:
             cursor = conexao.cursor()
 
@@ -1134,39 +1245,49 @@ class Database:
             cursor = conexao.cursor()
 
             cursor.execute("""
-                SELECT COALESCE(SUM(valor), 0)
+                SELECT
+                    COALESCE(SUM(valor), 0)
                 FROM fluxo_caixa
                 WHERE tipo = 'ENTRADA'
             """)
 
-            return float(cursor.fetchone()[0] or 0)
+            return float(
+                cursor.fetchone()[0] or 0
+            )
 
     def total_saidas_caixa(self):
         with self.conectar() as conexao:
             cursor = conexao.cursor()
 
             cursor.execute("""
-                SELECT COALESCE(SUM(valor), 0)
+                SELECT
+                    COALESCE(SUM(valor), 0)
                 FROM fluxo_caixa
                 WHERE tipo = 'SAÍDA'
             """)
 
-            return float(cursor.fetchone()[0] or 0)
+            return float(
+                cursor.fetchone()[0] or 0
+            )
 
     def saldo_caixa(self):
         return (
             self.total_entradas_caixa()
-            - self.total_saidas_caixa()
+            -
+            self.total_saidas_caixa()
         )
 
     def total_entradas_hoje(self):
-        hoje = date.today().strftime("%d/%m/%Y")
+        hoje = date.today().strftime(
+            "%d/%m/%Y"
+        )
 
         with self.conectar() as conexao:
             cursor = conexao.cursor()
 
             cursor.execute("""
-                SELECT COALESCE(SUM(valor), 0)
+                SELECT
+                    COALESCE(SUM(valor), 0)
                 FROM fluxo_caixa
                 WHERE tipo = 'ENTRADA'
                 AND data_hora LIKE ?
@@ -1174,16 +1295,21 @@ class Database:
                 f"{hoje}%",
             ))
 
-            return float(cursor.fetchone()[0] or 0)
+            return float(
+                cursor.fetchone()[0] or 0
+            )
 
     def total_saidas_hoje(self):
-        hoje = date.today().strftime("%d/%m/%Y")
+        hoje = date.today().strftime(
+            "%d/%m/%Y"
+        )
 
         with self.conectar() as conexao:
             cursor = conexao.cursor()
 
             cursor.execute("""
-                SELECT COALESCE(SUM(valor), 0)
+                SELECT
+                    COALESCE(SUM(valor), 0)
                 FROM fluxo_caixa
                 WHERE tipo = 'SAÍDA'
                 AND data_hora LIKE ?
@@ -1191,10 +1317,173 @@ class Database:
                 f"{hoje}%",
             ))
 
-            return float(cursor.fetchone()[0] or 0)
+            return float(
+                cursor.fetchone()[0] or 0
+            )
 
     def saldo_hoje(self):
         return (
             self.total_entradas_hoje()
-            - self.total_saidas_hoje()
+            -
+            self.total_saidas_hoje()
         )
+
+    # =====================================================
+    # RELATÓRIOS V1.7
+    # =====================================================
+
+    def relatorio_vendas_por_dia(
+        self,
+        dias=30
+    ):
+        resultado = []
+
+        hoje = date.today()
+
+        for i in range(
+            dias - 1,
+            -1,
+            -1
+        ):
+            dia = (
+                hoje
+                -
+                timedelta(days=i)
+            )
+
+            dia_texto = dia.strftime(
+                "%d/%m/%Y"
+            )
+
+            with self.conectar() as conexao:
+                cursor = conexao.cursor()
+
+                cursor.execute("""
+                    SELECT
+                        COALESCE(SUM(total), 0)
+                    FROM vendas
+                    WHERE data_hora LIKE ?
+                """, (
+                    f"{dia_texto}%",
+                ))
+
+                total = float(
+                    cursor.fetchone()[0] or 0
+                )
+
+            resultado.append(
+                (
+                    dia_texto,
+                    total
+                )
+            )
+
+        return resultado
+
+    def relatorio_produtos_mais_vendidos(
+        self,
+        limite=10
+    ):
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute("""
+                SELECT
+                    p.codigo,
+                    p.nome,
+                    SUM(i.quantidade)
+                    AS quantidade_vendida,
+                    SUM(i.subtotal)
+                    AS valor_total
+                FROM itens_venda i
+                INNER JOIN produtos p
+                    ON p.id = i.produto_id
+                GROUP BY
+                    p.id,
+                    p.codigo,
+                    p.nome
+                ORDER BY
+                    quantidade_vendida DESC
+                LIMIT ?
+            """, (
+                limite,
+            ))
+
+            return cursor.fetchall()
+
+    def relatorio_estoque_atual(self):
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute("""
+                SELECT
+                    codigo,
+                    nome,
+                    categoria,
+                    preco_compra,
+                    preco_venda,
+                    estoque,
+                    estoque_minimo
+                FROM produtos
+                ORDER BY nome
+            """)
+
+            return cursor.fetchall()
+
+    def relatorio_resumo_financeiro(self):
+        return {
+            "vendas_total":
+                self.total_vendas_geral(),
+
+            "entradas":
+                self.total_entradas_caixa(),
+
+            "saidas":
+                self.total_saidas_caixa(),
+
+            "saldo":
+                self.saldo_caixa(),
+
+            "vendas_hoje":
+                self.total_vendas_hoje(),
+        }
+
+    def total_vendas_geral(self):
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute("""
+                SELECT
+                    COALESCE(SUM(total), 0)
+                FROM vendas
+            """)
+
+            return float(
+                cursor.fetchone()[0] or 0
+            )
+
+    def relatorio_vendas_completo(self):
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute("""
+                SELECT
+                    v.id,
+                    v.data_hora,
+                    v.total,
+                    v.forma_pagamento,
+                    v.observacao
+                FROM vendas v
+                ORDER BY v.id DESC
+            """)
+
+            return cursor.fetchall()
+
+    def relatorio_fluxo_caixa_completo(self):
+        return self.listar_fluxo_caixa()
+
+    def relatorio_clientes(self):
+        return self.listar_clientes()
+
+    def relatorio_fornecedores(self):
+        return self.listar_fornecedores()

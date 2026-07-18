@@ -1,5 +1,7 @@
 import sys
 import sqlite3
+from pathlib import Path
+from datetime import datetime
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -22,16 +24,49 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QDialogButtonBox,
     QComboBox,
+    QTabWidget,
+    QFileDialog,
 )
+
+from openpyxl import Workbook
+from openpyxl.chart import BarChart, LineChart, Reference
+from openpyxl.styles import Font, Alignment
+
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+from matplotlib.figure import Figure
 
 from database import Database
 
 
+BASE_DIR = Path(__file__).resolve().parent
+EXPORT_DIR = BASE_DIR / "exports"
+EXPORT_DIR.mkdir(exist_ok=True)
+
+
 # ============================================================
-# DIÁLOGO DE PRODUTO
+# FUNÇÕES AUXILIARES
+# ============================================================
+
+def preencher_tabela(tabela, dados):
+    tabela.setRowCount(len(dados))
+
+    for linha, registro in enumerate(dados):
+        for coluna, valor in enumerate(registro):
+            tabela.setItem(
+                linha,
+                coluna,
+                QTableWidgetItem(
+                    "" if valor is None else str(valor)
+                )
+            )
+
+
+# ============================================================
+# PRODUTO
 # ============================================================
 
 class ProdutoDialog(QDialog):
+
     def __init__(self, parent=None, produto=None):
         super().__init__(parent)
 
@@ -105,10 +140,11 @@ class ProdutoDialog(QDialog):
 
 
 # ============================================================
-# DIÁLOGO CLIENTE
+# CLIENTE
 # ============================================================
 
 class ClienteDialog(QDialog):
+
     def __init__(self, parent=None, cliente=None):
         super().__init__(parent)
 
@@ -156,10 +192,11 @@ class ClienteDialog(QDialog):
 
 
 # ============================================================
-# DIÁLOGO FORNECEDOR
+# FORNECEDOR
 # ============================================================
 
 class FornecedorDialog(QDialog):
+
     def __init__(self, parent=None, fornecedor=None):
         super().__init__(parent)
 
@@ -215,6 +252,7 @@ class FornecedorDialog(QDialog):
 # ============================================================
 
 class MovimentacaoDialog(QDialog):
+
     def __init__(self, database, tipo, parent=None):
         super().__init__(parent)
 
@@ -231,15 +269,10 @@ class MovimentacaoDialog(QDialog):
 
         self.produto = QComboBox()
 
-        for item in self.database.listar_produtos():
-            texto = (
-                f"{item[1] or 'SEM CÓDIGO'} - "
-                f"{item[2]} | Estoque: {item[6]}"
-            )
-
+        for produto in self.database.listar_produtos():
             self.produto.addItem(
-                texto,
-                item[0]
+                f"{produto[2]} | Estoque: {produto[6]}",
+                produto[0]
             )
 
         self.quantidade = QDoubleSpinBox()
@@ -272,10 +305,11 @@ class MovimentacaoDialog(QDialog):
 
 
 # ============================================================
-# DIÁLOGO FLUXO DE CAIXA
+# FLUXO DE CAIXA
 # ============================================================
 
 class MovimentoCaixaDialog(QDialog):
+
     def __init__(self, tipo, parent=None):
         super().__init__(parent)
 
@@ -293,8 +327,8 @@ class MovimentoCaixaDialog(QDialog):
         self.categoria = QLineEdit()
 
         self.valor = QDoubleSpinBox()
-        self.valor.setMaximum(999999999)
         self.valor.setMinimum(0.01)
+        self.valor.setMaximum(999999999)
         self.valor.setDecimals(2)
         self.valor.setPrefix("R$ ")
 
@@ -316,7 +350,7 @@ class MovimentoCaixaDialog(QDialog):
         layout.addRow("Categoria:", self.categoria)
         layout.addRow("Valor:", self.valor)
         layout.addRow(
-            "Forma de pagamento:",
+            "Pagamento:",
             self.forma_pagamento
         )
         layout.addRow("Observação:", self.observacao)
@@ -349,6 +383,7 @@ class MovimentoCaixaDialog(QDialog):
 # ============================================================
 
 class LoginWindow(QWidget):
+
     def __init__(self, database, callback):
         super().__init__()
 
@@ -359,35 +394,21 @@ class LoginWindow(QWidget):
         self.resize(450, 500)
 
         layout = QVBoxLayout(self)
-
-        layout.setContentsMargins(
-            60,
-            60,
-            60,
-            60
-        )
+        layout.setContentsMargins(60, 60, 60, 60)
 
         titulo = QLabel("VS ERP")
-
-        titulo.setAlignment(
-            Qt.AlignCenter
-        )
-
+        titulo.setAlignment(Qt.AlignCenter)
         titulo.setStyleSheet(
-            """
-            font-size: 38px;
-            font-weight: bold;
-            color: #2563eb;
-            """
+            "font-size: 38px;"
+            "font-weight: bold;"
+            "color: #2563eb;"
         )
 
         subtitulo = QLabel(
             "Sistema de Gestão Comercial"
         )
 
-        subtitulo.setAlignment(
-            Qt.AlignCenter
-        )
+        subtitulo.setAlignment(Qt.AlignCenter)
 
         self.usuario = QLineEdit()
         self.usuario.setPlaceholderText("Usuário")
@@ -397,23 +418,17 @@ class LoginWindow(QWidget):
         self.senha.setEchoMode(QLineEdit.Password)
 
         entrar = QPushButton("ENTRAR")
-
-        entrar.clicked.connect(
-            self.fazer_login
-        )
+        entrar.clicked.connect(self.fazer_login)
 
         self.senha.returnPressed.connect(
             self.fazer_login
         )
 
         info = QLabel(
-            "Usuário: admin\n"
-            "Senha: 1234"
+            "Usuário: admin\nSenha: 1234"
         )
 
-        info.setAlignment(
-            Qt.AlignCenter
-        )
+        info.setAlignment(Qt.AlignCenter)
 
         layout.addStretch()
         layout.addWidget(titulo)
@@ -433,7 +448,6 @@ class LoginWindow(QWidget):
 
         if dados:
             self.callback(dados)
-
         else:
             QMessageBox.warning(
                 self,
@@ -447,6 +461,7 @@ class LoginWindow(QWidget):
 # ============================================================
 
 class Dashboard(QWidget):
+
     def __init__(self, database):
         super().__init__()
 
@@ -455,7 +470,6 @@ class Dashboard(QWidget):
         layout = QVBoxLayout(self)
 
         titulo = QLabel("Dashboard")
-
         titulo.setStyleSheet(
             "font-size: 30px; font-weight: bold;"
         )
@@ -480,15 +494,17 @@ class Dashboard(QWidget):
             "Saldo Caixa"
         )
 
-        self.saldo_hoje = self.criar_card(
-            "Saldo Hoje"
+        layout.addLayout(self.cards)
+
+        self.figure = Figure(
+            figsize=(8, 4)
         )
 
-        layout.addLayout(
-            self.cards
+        self.canvas = FigureCanvasQTAgg(
+            self.figure
         )
 
-        layout.addStretch()
+        layout.addWidget(self.canvas)
 
         self.atualizar()
 
@@ -504,18 +520,20 @@ class Dashboard(QWidget):
             """
         )
 
-        frame_layout = QVBoxLayout(frame)
+        card = QVBoxLayout(frame)
 
-        nome = QLabel(titulo)
+        card.addWidget(
+            QLabel(titulo)
+        )
 
         valor = QLabel("0")
 
         valor.setStyleSheet(
-            "font-size: 22px; font-weight: bold;"
+            "font-size: 23px;"
+            "font-weight: bold;"
         )
 
-        frame_layout.addWidget(nome)
-        frame_layout.addWidget(valor)
+        card.addWidget(valor)
 
         self.cards.addWidget(frame)
 
@@ -523,42 +541,90 @@ class Dashboard(QWidget):
 
     def atualizar(self):
         self.vendas.setText(
-            f"R$ {self.database.total_vendas_hoje():.2f}"
+            f"R$ "
+            f"{self.database.total_vendas_hoje():.2f}"
         )
 
         self.produtos.setText(
-            str(self.database.contar_produtos())
+            str(
+                self.database.contar_produtos()
+            )
         )
 
         self.clientes.setText(
-            str(self.database.contar_clientes())
+            str(
+                self.database.contar_clientes()
+            )
         )
 
         self.saldo.setText(
-            f"R$ {self.database.saldo_caixa():.2f}"
+            f"R$ "
+            f"{self.database.saldo_caixa():.2f}"
         )
 
-        self.saldo_hoje.setText(
-            f"R$ {self.database.saldo_hoje():.2f}"
+        self.atualizar_grafico()
+
+    def atualizar_grafico(self):
+        dados = (
+            self.database
+            .relatorio_vendas_por_dia(7)
         )
+
+        dias = [
+            item[0][:5]
+            for item in dados
+        ]
+
+        valores = [
+            item[1]
+            for item in dados
+        ]
+
+        self.figure.clear()
+
+        eixo = self.figure.add_subplot(111)
+
+        eixo.plot(
+            dias,
+            valores,
+            marker="o"
+        )
+
+        eixo.set_title(
+            "Vendas dos últimos 7 dias"
+        )
+
+        eixo.set_ylabel("R$")
+
+        eixo.tick_params(
+            axis="x",
+            rotation=30
+        )
+
+        self.figure.tight_layout()
+
+        self.canvas.draw()
 
 
 # ============================================================
-# PÁGINA GENÉRICA DE CADASTROS
+# PRODUTOS
 # ============================================================
 
 class ProdutosPage(QWidget):
-    def __init__(self, database, atualizar_callback):
+
+    def __init__(self, database, atualizar):
         super().__init__()
 
         self.database = database
-        self.atualizar_callback = atualizar_callback
+        self.atualizar_callback = atualizar
 
         layout = QVBoxLayout(self)
 
         titulo = QLabel("Produtos")
+
         titulo.setStyleSheet(
-            "font-size: 28px; font-weight: bold;"
+            "font-size: 28px;"
+            "font-weight: bold;"
         )
 
         layout.addWidget(titulo)
@@ -566,6 +632,7 @@ class ProdutosPage(QWidget):
         topo = QHBoxLayout()
 
         self.pesquisa = QLineEdit()
+
         self.pesquisa.setPlaceholderText(
             "Pesquisar produtos..."
         )
@@ -575,7 +642,10 @@ class ProdutosPage(QWidget):
         )
 
         novo = QPushButton("Novo Produto")
-        novo.clicked.connect(self.novo)
+
+        novo.clicked.connect(
+            self.novo
+        )
 
         topo.addWidget(self.pesquisa)
         topo.addWidget(novo)
@@ -623,23 +693,12 @@ class ProdutosPage(QWidget):
         self.carregar()
 
     def carregar(self):
-        dados = self.database.listar_produtos(
-            self.pesquisa.text().strip()
+        preencher_tabela(
+            self.tabela,
+            self.database.listar_produtos(
+                self.pesquisa.text().strip()
+            )
         )
-
-        self.tabela.setRowCount(
-            len(dados)
-        )
-
-        for linha, produto in enumerate(dados):
-            for coluna, valor in enumerate(produto):
-                self.tabela.setItem(
-                    linha,
-                    coluna,
-                    QTableWidgetItem(
-                        str(valor or "")
-                    )
-                )
 
     def selecionado(self):
         linha = self.tabela.currentRow()
@@ -665,20 +724,20 @@ class ProdutosPage(QWidget):
         if dialog.exec() != QDialog.Accepted:
             return
 
-        d = dialog.obter_dados()
+        dados = dialog.obter_dados()
 
-        if not d["nome"]:
+        if not dados["nome"]:
             return
 
         try:
             self.database.cadastrar_produto(
-                d["codigo"],
-                d["nome"],
-                d["categoria"],
-                d["preco_compra"],
-                d["preco_venda"],
-                d["estoque"],
-                d["estoque_minimo"]
+                dados["codigo"],
+                dados["nome"],
+                dados["categoria"],
+                dados["preco_compra"],
+                dados["preco_venda"],
+                dados["estoque"],
+                dados["estoque_minimo"]
             )
 
             self.carregar()
@@ -709,17 +768,17 @@ class ProdutosPage(QWidget):
         if dialog.exec() != QDialog.Accepted:
             return
 
-        d = dialog.obter_dados()
+        dados = dialog.obter_dados()
 
         self.database.atualizar_produto(
             produto_id,
-            d["codigo"],
-            d["nome"],
-            d["categoria"],
-            d["preco_compra"],
-            d["preco_venda"],
-            d["estoque"],
-            d["estoque_minimo"]
+            dados["codigo"],
+            dados["nome"],
+            dados["categoria"],
+            dados["preco_compra"],
+            dados["preco_venda"],
+            dados["estoque"],
+            dados["estoque_minimo"]
         )
 
         self.carregar()
@@ -743,8 +802,8 @@ class ProdutosPage(QWidget):
             QMessageBox.warning(
                 self,
                 "VS ERP",
-                "Este produto possui histórico e "
-                "não pode ser excluído."
+                "O produto possui histórico "
+                "e não pode ser excluído."
             )
 
 
@@ -753,17 +812,19 @@ class ProdutosPage(QWidget):
 # ============================================================
 
 class ClientesPage(QWidget):
-    def __init__(self, database, atualizar_callback):
+
+    def __init__(self, database, atualizar):
         super().__init__()
 
         self.database = database
-        self.atualizar_callback = atualizar_callback
+        self.atualizar_callback = atualizar
 
         layout = QVBoxLayout(self)
 
         titulo = QLabel("Clientes")
         titulo.setStyleSheet(
-            "font-size: 28px; font-weight: bold;"
+            "font-size: 28px;"
+            "font-weight: bold;"
         )
 
         layout.addWidget(titulo)
@@ -771,6 +832,7 @@ class ClientesPage(QWidget):
         topo = QHBoxLayout()
 
         self.pesquisa = QLineEdit()
+
         self.pesquisa.setPlaceholderText(
             "Pesquisar clientes..."
         )
@@ -780,7 +842,10 @@ class ClientesPage(QWidget):
         )
 
         novo = QPushButton("Novo Cliente")
-        novo.clicked.connect(self.novo)
+
+        novo.clicked.connect(
+            self.novo
+        )
 
         topo.addWidget(self.pesquisa)
         topo.addWidget(novo)
@@ -825,23 +890,12 @@ class ClientesPage(QWidget):
         self.carregar()
 
     def carregar(self):
-        dados = self.database.listar_clientes(
-            self.pesquisa.text().strip()
+        preencher_tabela(
+            self.tabela,
+            self.database.listar_clientes(
+                self.pesquisa.text().strip()
+            )
         )
-
-        self.tabela.setRowCount(
-            len(dados)
-        )
-
-        for linha, cliente in enumerate(dados):
-            for coluna, valor in enumerate(cliente):
-                self.tabela.setItem(
-                    linha,
-                    coluna,
-                    QTableWidgetItem(
-                        str(valor or "")
-                    )
-                )
 
     def selecionado(self):
         linha = self.tabela.currentRow()
@@ -867,16 +921,16 @@ class ClientesPage(QWidget):
         if dialog.exec() != QDialog.Accepted:
             return
 
-        d = dialog.obter_dados()
+        dados = dialog.obter_dados()
 
-        if not d["nome"]:
+        if not dados["nome"]:
             return
 
         self.database.cadastrar_cliente(
-            d["nome"],
-            d["cpf_cnpj"],
-            d["telefone"],
-            d["email"]
+            dados["nome"],
+            dados["cpf_cnpj"],
+            dados["telefone"],
+            dados["email"]
         )
 
         self.carregar()
@@ -900,18 +954,17 @@ class ClientesPage(QWidget):
         if dialog.exec() != QDialog.Accepted:
             return
 
-        d = dialog.obter_dados()
+        dados = dialog.obter_dados()
 
         self.database.atualizar_cliente(
             cliente_id,
-            d["nome"],
-            d["cpf_cnpj"],
-            d["telefone"],
-            d["email"]
+            dados["nome"],
+            dados["cpf_cnpj"],
+            dados["telefone"],
+            dados["email"]
         )
 
         self.carregar()
-        self.atualizar_callback()
 
     def excluir(self):
         cliente_id = self.selecionado()
@@ -932,17 +985,19 @@ class ClientesPage(QWidget):
 # ============================================================
 
 class FornecedoresPage(QWidget):
-    def __init__(self, database, atualizar_callback):
+
+    def __init__(self, database, atualizar):
         super().__init__()
 
         self.database = database
-        self.atualizar_callback = atualizar_callback
+        self.atualizar_callback = atualizar
 
         layout = QVBoxLayout(self)
 
         titulo = QLabel("Fornecedores")
         titulo.setStyleSheet(
-            "font-size: 28px; font-weight: bold;"
+            "font-size: 28px;"
+            "font-weight: bold;"
         )
 
         layout.addWidget(titulo)
@@ -950,6 +1005,7 @@ class FornecedoresPage(QWidget):
         topo = QHBoxLayout()
 
         self.pesquisa = QLineEdit()
+
         self.pesquisa.setPlaceholderText(
             "Pesquisar fornecedores..."
         )
@@ -958,8 +1014,13 @@ class FornecedoresPage(QWidget):
             self.carregar
         )
 
-        novo = QPushButton("Novo Fornecedor")
-        novo.clicked.connect(self.novo)
+        novo = QPushButton(
+            "Novo Fornecedor"
+        )
+
+        novo.clicked.connect(
+            self.novo
+        )
 
         topo.addWidget(self.pesquisa)
         topo.addWidget(novo)
@@ -1005,33 +1066,17 @@ class FornecedoresPage(QWidget):
         self.carregar()
 
     def carregar(self):
-        dados = self.database.listar_fornecedores(
-            self.pesquisa.text().strip()
+        preencher_tabela(
+            self.tabela,
+            self.database.listar_fornecedores(
+                self.pesquisa.text().strip()
+            )
         )
-
-        self.tabela.setRowCount(
-            len(dados)
-        )
-
-        for linha, fornecedor in enumerate(dados):
-            for coluna, valor in enumerate(fornecedor):
-                self.tabela.setItem(
-                    linha,
-                    coluna,
-                    QTableWidgetItem(
-                        str(valor or "")
-                    )
-                )
 
     def selecionado(self):
         linha = self.tabela.currentRow()
 
         if linha < 0:
-            QMessageBox.warning(
-                self,
-                "VS ERP",
-                "Selecione um fornecedor."
-            )
             return None
 
         return int(
@@ -1047,17 +1092,17 @@ class FornecedoresPage(QWidget):
         if dialog.exec() != QDialog.Accepted:
             return
 
-        d = dialog.obter_dados()
+        dados = dialog.obter_dados()
 
-        if not d["nome"]:
+        if not dados["nome"]:
             return
 
         self.database.cadastrar_fornecedor(
-            d["nome"],
-            d["cpf_cnpj"],
-            d["telefone"],
-            d["email"],
-            d["endereco"]
+            dados["nome"],
+            dados["cpf_cnpj"],
+            dados["telefone"],
+            dados["email"],
+            dados["endereco"]
         )
 
         self.carregar()
@@ -1070,7 +1115,8 @@ class FornecedoresPage(QWidget):
             return
 
         fornecedor = (
-            self.database.buscar_fornecedor_por_id(
+            self.database
+            .buscar_fornecedor_por_id(
                 fornecedor_id
             )
         )
@@ -1083,19 +1129,18 @@ class FornecedoresPage(QWidget):
         if dialog.exec() != QDialog.Accepted:
             return
 
-        d = dialog.obter_dados()
+        dados = dialog.obter_dados()
 
         self.database.atualizar_fornecedor(
             fornecedor_id,
-            d["nome"],
-            d["cpf_cnpj"],
-            d["telefone"],
-            d["email"],
-            d["endereco"]
+            dados["nome"],
+            dados["cpf_cnpj"],
+            dados["telefone"],
+            dados["email"],
+            dados["endereco"]
         )
 
         self.carregar()
-        self.atualizar_callback()
 
     def excluir(self):
         fornecedor_id = self.selecionado()
@@ -1116,6 +1161,7 @@ class FornecedoresPage(QWidget):
 # ============================================================
 
 class EstoquePage(QWidget):
+
     def __init__(self, database):
         super().__init__()
 
@@ -1123,9 +1169,13 @@ class EstoquePage(QWidget):
 
         layout = QVBoxLayout(self)
 
-        titulo = QLabel("Estoque")
+        titulo = QLabel(
+            "Controle de Estoque"
+        )
+
         titulo.setStyleSheet(
-            "font-size: 28px; font-weight: bold;"
+            "font-size: 28px;"
+            "font-weight: bold;"
         )
 
         layout.addWidget(titulo)
@@ -1137,8 +1187,8 @@ class EstoquePage(QWidget):
             "Código",
             "Produto",
             "Categoria",
-            "Estoque",
-            "Mínimo",
+            "Estoque Atual",
+            "Estoque Mínimo",
             "Situação",
         ])
 
@@ -1153,13 +1203,16 @@ class EstoquePage(QWidget):
     def carregar(self):
         produtos = self.database.listar_produtos()
 
-        self.tabela.setRowCount(
-            len(produtos)
-        )
+        dados = []
 
-        for linha, produto in enumerate(produtos):
-            estoque = float(produto[6] or 0)
-            minimo = float(produto[7] or 0)
+        for produto in produtos:
+            estoque = float(
+                produto[6] or 0
+            )
+
+            minimo = float(
+                produto[7] or 0
+            )
 
             situacao = (
                 "ESTOQUE BAIXO"
@@ -1167,23 +1220,19 @@ class EstoquePage(QWidget):
                 else "NORMAL"
             )
 
-            valores = [
-                produto[1] or "",
+            dados.append((
+                produto[1],
                 produto[2],
-                produto[3] or "",
+                produto[3],
                 estoque,
                 minimo,
-                situacao,
-            ]
+                situacao
+            ))
 
-            for coluna, valor in enumerate(valores):
-                self.tabela.setItem(
-                    linha,
-                    coluna,
-                    QTableWidgetItem(
-                        str(valor)
-                    )
-                )
+        preencher_tabela(
+            self.tabela,
+            dados
+        )
 
 
 # ============================================================
@@ -1191,18 +1240,21 @@ class EstoquePage(QWidget):
 # ============================================================
 
 class CaixaPage(QWidget):
-    def __init__(self, database, atualizar_callback):
+
+    def __init__(self, database, atualizar):
         super().__init__()
 
         self.database = database
-        self.atualizar_callback = atualizar_callback
+        self.atualizar_callback = atualizar
         self.itens = []
 
         layout = QVBoxLayout(self)
 
         titulo = QLabel("Caixa / PDV")
+
         titulo.setStyleSheet(
-            "font-size: 28px; font-weight: bold;"
+            "font-size: 28px;"
+            "font-weight: bold;"
         )
 
         layout.addWidget(titulo)
@@ -1216,8 +1268,13 @@ class CaixaPage(QWidget):
         self.quantidade.setMaximum(999999)
         self.quantidade.setValue(1)
 
-        adicionar = QPushButton("Adicionar")
-        adicionar.clicked.connect(self.adicionar)
+        adicionar = QPushButton(
+            "Adicionar"
+        )
+
+        adicionar.clicked.connect(
+            self.adicionar
+        )
 
         topo.addWidget(self.produto)
         topo.addWidget(self.quantidade)
@@ -1246,7 +1303,8 @@ class CaixaPage(QWidget):
         )
 
         self.total.setStyleSheet(
-            "font-size: 28px; font-weight: bold;"
+            "font-size: 28px;"
+            "font-weight: bold;"
         )
 
         layout.addWidget(self.total)
@@ -1278,7 +1336,8 @@ class CaixaPage(QWidget):
 
         for produto in self.database.listar_produtos():
             self.produto.addItem(
-                f"{produto[2]} | Estoque: {produto[6]}",
+                f"{produto[2]} | "
+                f"Estoque: {produto[6]}",
                 produto[0]
             )
 
@@ -1288,51 +1347,78 @@ class CaixaPage(QWidget):
         if produto_id is None:
             return
 
-        produto = self.database.buscar_produto_por_id(
-            produto_id
+        produto = (
+            self.database
+            .buscar_produto_por_id(
+                produto_id
+            )
         )
 
-        quantidade = self.quantidade.value()
+        quantidade = (
+            self.quantidade.value()
+        )
+
+        estoque = float(
+            produto[6] or 0
+        )
+
+        total_carrinho = sum(
+            item["quantidade"]
+            for item in self.itens
+            if item["produto_id"]
+            == produto_id
+        )
+
+        if (
+            quantidade
+            +
+            total_carrinho
+            >
+            estoque
+        ):
+            QMessageBox.warning(
+                self,
+                "VS ERP",
+                "Estoque insuficiente."
+            )
+            return
 
         self.itens.append({
             "produto_id": produto_id,
             "nome": produto[2],
             "quantidade": quantidade,
-            "preco": float(produto[5] or 0),
+            "preco": float(
+                produto[5] or 0
+            ),
         })
 
         self.atualizar_carrinho()
 
     def atualizar_carrinho(self):
-        self.tabela.setRowCount(
-            len(self.itens)
-        )
+        dados = []
 
         total = 0
 
-        for linha, item in enumerate(self.itens):
+        for item in self.itens:
             subtotal = (
                 item["quantidade"]
-                * item["preco"]
+                *
+                item["preco"]
             )
 
             total += subtotal
 
-            valores = [
+            dados.append((
                 item["nome"],
                 item["quantidade"],
                 f"R$ {item['preco']:.2f}",
-                f"R$ {subtotal:.2f}",
-            ]
+                f"R$ {subtotal:.2f}"
+            ))
 
-            for coluna, valor in enumerate(valores):
-                self.tabela.setItem(
-                    linha,
-                    coluna,
-                    QTableWidgetItem(
-                        str(valor)
-                    )
-                )
+        preencher_tabela(
+            self.tabela,
+            dados
+        )
 
         self.total.setText(
             f"TOTAL: R$ {total:.2f}"
@@ -1351,6 +1437,7 @@ class CaixaPage(QWidget):
             {
                 "produto_id":
                     item["produto_id"],
+
                 "quantidade":
                     item["quantidade"],
             }
@@ -1359,7 +1446,8 @@ class CaixaPage(QWidget):
 
         try:
             venda_id, total = (
-                self.database.finalizar_venda(
+                self.database
+                .finalizar_venda(
                     itens,
                     self.pagamento.currentText()
                 )
@@ -1368,13 +1456,15 @@ class CaixaPage(QWidget):
             QMessageBox.information(
                 self,
                 "VS ERP",
-                f"Venda #{venda_id} finalizada.\n"
+                f"Venda #{venda_id} "
+                f"finalizada.\n"
                 f"Total: R$ {total:.2f}"
             )
 
             self.itens.clear()
+
             self.atualizar_carrinho()
-            self.carregar_produtos()
+
             self.atualizar_callback()
 
         except ValueError as erro:
@@ -1390,6 +1480,7 @@ class CaixaPage(QWidget):
 # ============================================================
 
 class VendasPage(QWidget):
+
     def __init__(self, database):
         super().__init__()
 
@@ -1398,8 +1489,10 @@ class VendasPage(QWidget):
         layout = QVBoxLayout(self)
 
         titulo = QLabel("Vendas")
+
         titulo.setStyleSheet(
-            "font-size: 28px; font-weight: bold;"
+            "font-size: 28px;"
+            "font-weight: bold;"
         )
 
         layout.addWidget(titulo)
@@ -1424,29 +1517,26 @@ class VendasPage(QWidget):
         self.carregar()
 
     def carregar(self):
-        vendas = self.database.listar_vendas()
-
-        self.tabela.setRowCount(
-            len(vendas)
+        vendas = (
+            self.database
+            .listar_vendas()
         )
 
-        for linha, venda in enumerate(vendas):
-            valores = [
+        dados = []
+
+        for venda in vendas:
+            dados.append((
                 venda[0],
                 venda[1],
                 f"R$ {venda[2]:.2f}",
-                venda[3] or "",
-                venda[4] or "",
-            ]
+                venda[3],
+                venda[4]
+            ))
 
-            for coluna, valor in enumerate(valores):
-                self.tabela.setItem(
-                    linha,
-                    coluna,
-                    QTableWidgetItem(
-                        str(valor)
-                    )
-                )
+        preencher_tabela(
+            self.tabela,
+            dados
+        )
 
 
 # ============================================================
@@ -1454,17 +1544,22 @@ class VendasPage(QWidget):
 # ============================================================
 
 class FluxoCaixaPage(QWidget):
-    def __init__(self, database, atualizar_callback):
+
+    def __init__(self, database, atualizar):
         super().__init__()
 
         self.database = database
-        self.atualizar_callback = atualizar_callback
+        self.atualizar_callback = atualizar
 
         layout = QVBoxLayout(self)
 
-        titulo = QLabel("Fluxo de Caixa")
+        titulo = QLabel(
+            "Fluxo de Caixa"
+        )
+
         titulo.setStyleSheet(
-            "font-size: 28px; font-weight: bold;"
+            "font-size: 28px;"
+            "font-weight: bold;"
         )
 
         layout.addWidget(titulo)
@@ -1475,34 +1570,23 @@ class FluxoCaixaPage(QWidget):
         self.saidas = QLabel()
         self.saldo = QLabel()
 
-        for widget in [
+        for label in (
             self.entradas,
             self.saidas,
-            self.saldo,
-        ]:
-            widget.setStyleSheet(
-                """
-                background-color: white;
-                padding: 16px;
-                font-size: 18px;
-                font-weight: bold;
-                """
+            self.saldo
+        ):
+            label.setStyleSheet(
+                "background: white;"
+                "padding: 15px;"
+                "font-size: 18px;"
+                "font-weight: bold;"
             )
 
-            resumo.addWidget(widget)
+            resumo.addWidget(label)
 
         layout.addLayout(resumo)
 
-        topo = QHBoxLayout()
-
-        self.pesquisa = QLineEdit()
-        self.pesquisa.setPlaceholderText(
-            "Pesquisar no fluxo de caixa..."
-        )
-
-        self.pesquisa.textChanged.connect(
-            self.carregar
-        )
+        botoes = QHBoxLayout()
 
         entrada = QPushButton(
             "Nova Entrada"
@@ -1513,18 +1597,24 @@ class FluxoCaixaPage(QWidget):
         )
 
         entrada.clicked.connect(
-            self.nova_entrada
+            lambda:
+            self.novo_movimento(
+                "ENTRADA"
+            )
         )
 
         saida.clicked.connect(
-            self.nova_saida
+            lambda:
+            self.novo_movimento(
+                "SAÍDA"
+            )
         )
 
-        topo.addWidget(self.pesquisa)
-        topo.addWidget(entrada)
-        topo.addWidget(saida)
+        botoes.addWidget(entrada)
+        botoes.addWidget(saida)
+        botoes.addStretch()
 
-        layout.addLayout(topo)
+        layout.addLayout(botoes)
 
         self.tabela = QTableWidget()
         self.tabela.setColumnCount(8)
@@ -1544,78 +1634,9 @@ class FluxoCaixaPage(QWidget):
             QHeaderView.Stretch
         )
 
-        self.tabela.setSelectionBehavior(
-            QTableWidget.SelectRows
-        )
-
         layout.addWidget(self.tabela)
 
-        excluir = QPushButton(
-            "Excluir Movimento Selecionado"
-        )
-
-        excluir.clicked.connect(
-            self.excluir_movimento
-        )
-
-        layout.addWidget(excluir)
-
         self.carregar()
-
-    def carregar(self):
-        dados = self.database.listar_fluxo_caixa(
-            self.pesquisa.text().strip()
-        )
-
-        self.tabela.setRowCount(
-            len(dados)
-        )
-
-        for linha, movimento in enumerate(dados):
-            valores = [
-                movimento[0],
-                movimento[1],
-                movimento[2],
-                movimento[3],
-                f"R$ {movimento[4]:.2f}",
-                movimento[5] or "",
-                movimento[6],
-                movimento[7] or "",
-            ]
-
-            for coluna, valor in enumerate(valores):
-                self.tabela.setItem(
-                    linha,
-                    coluna,
-                    QTableWidgetItem(
-                        str(valor)
-                    )
-                )
-
-        self.entradas.setText(
-            f"Entradas: R$ "
-            f"{self.database.total_entradas_caixa():.2f}"
-        )
-
-        self.saidas.setText(
-            f"Saídas: R$ "
-            f"{self.database.total_saidas_caixa():.2f}"
-        )
-
-        self.saldo.setText(
-            f"Saldo: R$ "
-            f"{self.database.saldo_caixa():.2f}"
-        )
-
-    def nova_entrada(self):
-        self.novo_movimento(
-            "ENTRADA"
-        )
-
-    def nova_saida(self):
-        self.novo_movimento(
-            "SAÍDA"
-        )
 
     def novo_movimento(self, tipo):
         dialog = MovimentoCaixaDialog(
@@ -1641,12 +1662,6 @@ class FluxoCaixaPage(QWidget):
             self.carregar()
             self.atualizar_callback()
 
-            QMessageBox.information(
-                self,
-                "VS ERP",
-                "Movimento registrado com sucesso."
-            )
-
         except ValueError as erro:
             QMessageBox.warning(
                 self,
@@ -1654,41 +1669,633 @@ class FluxoCaixaPage(QWidget):
                 str(erro)
             )
 
-    def excluir_movimento(self):
-        linha = self.tabela.currentRow()
+    def carregar(self):
+        movimentos = (
+            self.database
+            .listar_fluxo_caixa()
+        )
 
-        if linha < 0:
-            QMessageBox.warning(
+        dados = []
+
+        for movimento in movimentos:
+            dados.append((
+                movimento[0],
+                movimento[1],
+                movimento[2],
+                movimento[3],
+                f"R$ {movimento[4]:.2f}",
+                movimento[5],
+                movimento[6],
+                movimento[7]
+            ))
+
+        preencher_tabela(
+            self.tabela,
+            dados
+        )
+
+        self.entradas.setText(
+            "Entradas: "
+            f"R$ "
+            f"{self.database.total_entradas_caixa():.2f}"
+        )
+
+        self.saidas.setText(
+            "Saídas: "
+            f"R$ "
+            f"{self.database.total_saidas_caixa():.2f}"
+        )
+
+        self.saldo.setText(
+            "Saldo: "
+            f"R$ "
+            f"{self.database.saldo_caixa():.2f}"
+        )
+
+
+# ============================================================
+# RELATÓRIOS + EXCEL + GRÁFICOS
+# ============================================================
+
+class RelatoriosPage(QWidget):
+
+    def __init__(self, database):
+        super().__init__()
+
+        self.database = database
+
+        layout = QVBoxLayout(self)
+
+        titulo = QLabel(
+            "Relatórios e Exportações"
+        )
+
+        titulo.setStyleSheet(
+            "font-size: 28px;"
+            "font-weight: bold;"
+        )
+
+        layout.addWidget(titulo)
+
+        botoes = QHBoxLayout()
+
+        exportar = QPushButton(
+            "Exportar Tudo para Excel"
+        )
+
+        exportar.clicked.connect(
+            self.exportar_excel
+        )
+
+        atualizar = QPushButton(
+            "Atualizar Relatórios"
+        )
+
+        atualizar.clicked.connect(
+            self.atualizar
+        )
+
+        botoes.addWidget(exportar)
+        botoes.addWidget(atualizar)
+        botoes.addStretch()
+
+        layout.addLayout(botoes)
+
+        self.abas = QTabWidget()
+
+        self.tabela_vendas = QTableWidget()
+
+        self.tabela_estoque = QTableWidget()
+
+        self.tabela_produtos = QTableWidget()
+
+        self.grafico_widget = QWidget()
+
+        self.criar_abas()
+
+        layout.addWidget(self.abas)
+
+        self.atualizar()
+
+    def configurar_tabela(
+        self,
+        tabela,
+        cabecalhos
+    ):
+        tabela.setColumnCount(
+            len(cabecalhos)
+        )
+
+        tabela.setHorizontalHeaderLabels(
+            cabecalhos
+        )
+
+        tabela.horizontalHeader().setSectionResizeMode(
+            QHeaderView.Stretch
+        )
+
+    def criar_abas(self):
+        self.configurar_tabela(
+            self.tabela_vendas,
+            [
+                "Venda",
+                "Data/Hora",
+                "Total",
+                "Pagamento",
+                "Observação",
+            ]
+        )
+
+        self.configurar_tabela(
+            self.tabela_estoque,
+            [
+                "Código",
+                "Produto",
+                "Categoria",
+                "Preço Compra",
+                "Preço Venda",
+                "Estoque",
+                "Mínimo",
+            ]
+        )
+
+        self.configurar_tabela(
+            self.tabela_produtos,
+            [
+                "Código",
+                "Produto",
+                "Qtd. Vendida",
+                "Valor Vendido",
+            ]
+        )
+
+        self.abas.addTab(
+            self.tabela_vendas,
+            "Vendas"
+        )
+
+        self.abas.addTab(
+            self.tabela_estoque,
+            "Estoque"
+        )
+
+        self.abas.addTab(
+            self.tabela_produtos,
+            "Mais Vendidos"
+        )
+
+        grafico_layout = QVBoxLayout(
+            self.grafico_widget
+        )
+
+        self.figure = Figure(
+            figsize=(9, 5)
+        )
+
+        self.canvas = FigureCanvasQTAgg(
+            self.figure
+        )
+
+        grafico_layout.addWidget(
+            self.canvas
+        )
+
+        self.abas.addTab(
+            self.grafico_widget,
+            "Gráfico de Vendas"
+        )
+
+    def atualizar(self):
+        vendas = (
+            self.database
+            .relatorio_vendas_completo()
+        )
+
+        vendas_formatadas = []
+
+        for venda in vendas:
+            vendas_formatadas.append((
+                venda[0],
+                venda[1],
+                f"R$ {venda[2]:.2f}",
+                venda[3],
+                venda[4]
+            ))
+
+        preencher_tabela(
+            self.tabela_vendas,
+            vendas_formatadas
+        )
+
+        preencher_tabela(
+            self.tabela_estoque,
+            self.database
+            .relatorio_estoque_atual()
+        )
+
+        mais_vendidos = (
+            self.database
+            .relatorio_produtos_mais_vendidos(
+                10
+            )
+        )
+
+        dados_produtos = []
+
+        for item in mais_vendidos:
+            dados_produtos.append((
+                item[0],
+                item[1],
+                item[2],
+                f"R$ {item[3]:.2f}"
+            ))
+
+        preencher_tabela(
+            self.tabela_produtos,
+            dados_produtos
+        )
+
+        self.atualizar_grafico()
+
+    def atualizar_grafico(self):
+        dados = (
+            self.database
+            .relatorio_vendas_por_dia(30)
+        )
+
+        datas = [
+            item[0][:5]
+            for item in dados
+        ]
+
+        valores = [
+            item[1]
+            for item in dados
+        ]
+
+        self.figure.clear()
+
+        eixo = self.figure.add_subplot(111)
+
+        eixo.plot(
+            datas,
+            valores,
+            marker="o"
+        )
+
+        eixo.set_title(
+            "Vendas dos últimos 30 dias"
+        )
+
+        eixo.set_xlabel("Data")
+
+        eixo.set_ylabel("Valor vendido (R$)")
+
+        eixo.tick_params(
+            axis="x",
+            rotation=60
+        )
+
+        self.figure.tight_layout()
+
+        self.canvas.draw()
+
+    def exportar_excel(self):
+        nome_padrao = (
+            "VS_ERP_Relatorio_"
+            +
+            datetime.now().strftime(
+                "%Y%m%d_%H%M%S"
+            )
+            +
+            ".xlsx"
+        )
+
+        caminho, _ = (
+            QFileDialog
+            .getSaveFileName(
+                self,
+                "Salvar relatório Excel",
+                str(
+                    EXPORT_DIR /
+                    nome_padrao
+                ),
+                "Arquivo Excel (*.xlsx)"
+            )
+        )
+
+        if not caminho:
+            return
+
+        try:
+            workbook = Workbook()
+
+            aba_dashboard = workbook.active
+
+            aba_dashboard.title = (
+                "Dashboard"
+            )
+
+            resumo = (
+                self.database
+                .relatorio_resumo_financeiro()
+            )
+
+            aba_dashboard.append([
+                "VS ERP - Resumo Financeiro"
+            ])
+
+            aba_dashboard[
+                "A1"
+            ].font = Font(
+                bold=True,
+                size=16
+            )
+
+            aba_dashboard.append([])
+            aba_dashboard.append([
+                "Indicador",
+                "Valor"
+            ])
+
+            aba_dashboard.append([
+                "Total de Vendas",
+                resumo["vendas_total"]
+            ])
+
+            aba_dashboard.append([
+                "Entradas de Caixa",
+                resumo["entradas"]
+            ])
+
+            aba_dashboard.append([
+                "Saídas de Caixa",
+                resumo["saidas"]
+            ])
+
+            aba_dashboard.append([
+                "Saldo Atual",
+                resumo["saldo"]
+            ])
+
+            aba_dashboard.append([
+                "Vendas Hoje",
+                resumo["vendas_hoje"]
+            ])
+
+            aba_produtos = (
+                workbook.create_sheet(
+                    "Produtos"
+                )
+            )
+
+            aba_produtos.append([
+                "Código",
+                "Nome",
+                "Categoria",
+                "Preço Compra",
+                "Preço Venda",
+                "Estoque",
+                "Estoque Mínimo",
+            ])
+
+            for produto in (
+                self.database
+                .relatorio_estoque_atual()
+            ):
+                aba_produtos.append(
+                    list(produto)
+                )
+
+            aba_vendas = (
+                workbook.create_sheet(
+                    "Vendas"
+                )
+            )
+
+            aba_vendas.append([
+                "ID",
+                "Data/Hora",
+                "Total",
+                "Pagamento",
+                "Observação",
+            ])
+
+            for venda in (
+                self.database
+                .relatorio_vendas_completo()
+            ):
+                aba_vendas.append(
+                    list(venda)
+                )
+
+            aba_fluxo = (
+                workbook.create_sheet(
+                    "Fluxo de Caixa"
+                )
+            )
+
+            aba_fluxo.append([
+                "ID",
+                "Tipo",
+                "Descrição",
+                "Categoria",
+                "Valor",
+                "Pagamento",
+                "Data/Hora",
+                "Observação",
+            ])
+
+            for movimento in (
+                self.database
+                .relatorio_fluxo_caixa_completo()
+            ):
+                aba_fluxo.append(
+                    list(movimento)
+                )
+
+            aba_clientes = (
+                workbook.create_sheet(
+                    "Clientes"
+                )
+            )
+
+            aba_clientes.append([
+                "ID",
+                "Nome",
+                "CPF/CNPJ",
+                "Telefone",
+                "E-mail",
+            ])
+
+            for cliente in (
+                self.database
+                .relatorio_clientes()
+            ):
+                aba_clientes.append(
+                    list(cliente)
+                )
+
+            aba_fornecedores = (
+                workbook.create_sheet(
+                    "Fornecedores"
+                )
+            )
+
+            aba_fornecedores.append([
+                "ID",
+                "Nome",
+                "CPF/CNPJ",
+                "Telefone",
+                "E-mail",
+                "Endereço",
+            ])
+
+            for fornecedor in (
+                self.database
+                .relatorio_fornecedores()
+            ):
+                aba_fornecedores.append(
+                    list(fornecedor)
+                )
+
+            aba_grafico = (
+                workbook.create_sheet(
+                    "Vendas por Dia"
+                )
+            )
+
+            aba_grafico.append([
+                "Data",
+                "Total"
+            ])
+
+            dados_vendas = (
+                self.database
+                .relatorio_vendas_por_dia(
+                    30
+                )
+            )
+
+            for dia, total in dados_vendas:
+                aba_grafico.append([
+                    dia,
+                    total
+                ])
+
+            grafico = LineChart()
+
+            grafico.title = (
+                "Vendas dos Últimos 30 Dias"
+            )
+
+            grafico.y_axis.title = (
+                "Valor Vendido"
+            )
+
+            grafico.x_axis.title = (
+                "Data"
+            )
+
+            dados_ref = Reference(
+                aba_grafico,
+                min_col=2,
+                min_row=1,
+                max_row=(
+                    len(dados_vendas)
+                    +
+                    1
+                )
+            )
+
+            categorias_ref = Reference(
+                aba_grafico,
+                min_col=1,
+                min_row=2,
+                max_row=(
+                    len(dados_vendas)
+                    +
+                    1
+                )
+            )
+
+            grafico.add_data(
+                dados_ref,
+                titles_from_data=True
+            )
+
+            grafico.set_categories(
+                categorias_ref
+            )
+
+            aba_grafico.add_chart(
+                grafico,
+                "D2"
+            )
+
+            for aba in workbook.worksheets:
+                for celula in aba[1]:
+                    celula.font = Font(
+                        bold=True
+                    )
+
+                    celula.alignment = (
+                        Alignment(
+                            horizontal="center"
+                        )
+                    )
+
+                for coluna in (
+                    aba.columns
+                ):
+                    maior = 0
+
+                    letra = (
+                        coluna[0]
+                        .column_letter
+                    )
+
+                    for celula in coluna:
+                        valor = (
+                            ""
+                            if celula.value is None
+                            else str(
+                                celula.value
+                            )
+                        )
+
+                        maior = max(
+                            maior,
+                            len(valor)
+                        )
+
+                    aba.column_dimensions[
+                        letra
+                    ].width = min(
+                        maior + 3,
+                        40
+                    )
+
+            workbook.save(
+                caminho
+            )
+
+            QMessageBox.information(
                 self,
                 "VS ERP",
-                "Selecione um movimento."
+                "Relatório Excel gerado "
+                "com sucesso.\n\n"
+                f"{caminho}"
             )
-            return
 
-        movimento_id = int(
-            self.tabela.item(
-                linha,
-                0
-            ).text()
-        )
-
-        resposta = QMessageBox.question(
-            self,
-            "VS ERP",
-            "Deseja excluir este movimento?",
-            QMessageBox.Yes |
-            QMessageBox.No
-        )
-
-        if resposta != QMessageBox.Yes:
-            return
-
-        self.database.excluir_movimento_caixa(
-            movimento_id
-        )
-
-        self.carregar()
-        self.atualizar_callback()
+        except Exception as erro:
+            QMessageBox.critical(
+                self,
+                "VS ERP",
+                "Não foi possível gerar "
+                "o relatório.\n\n"
+                f"{erro}"
+            )
 
 
 # ============================================================
@@ -1696,7 +2303,12 @@ class FluxoCaixaPage(QWidget):
 # ============================================================
 
 class MainWindow(QMainWindow):
-    def __init__(self, database, usuario):
+
+    def __init__(
+        self,
+        database,
+        usuario
+    ):
         super().__init__()
 
         self.database = database
@@ -1707,19 +2319,34 @@ class MainWindow(QMainWindow):
         )
 
         self.resize(
-            1350,
-            820
+            1400,
+            850
         )
 
         central = QWidget()
-        self.setCentralWidget(central)
 
-        layout = QHBoxLayout(central)
-        layout.setContentsMargins(0, 0, 0, 0)
+        self.setCentralWidget(
+            central
+        )
+
+        layout = QHBoxLayout(
+            central
+        )
+
+        layout.setContentsMargins(
+            0,
+            0,
+            0,
+            0
+        )
+
         layout.setSpacing(0)
 
         menu = QFrame()
-        menu.setFixedWidth(230)
+
+        menu.setFixedWidth(
+            230
+        )
 
         menu.setStyleSheet(
             """
@@ -1745,21 +2372,25 @@ class MainWindow(QMainWindow):
             """
         )
 
-        menu_layout = QVBoxLayout(menu)
+        menu_layout = QVBoxLayout(
+            menu
+        )
 
         logo = QLabel("VS ERP")
 
         logo.setStyleSheet(
-            """
-            font-size: 25px;
-            font-weight: bold;
-            padding: 20px;
-            """
+            "font-size: 25px;"
+            "font-weight: bold;"
+            "padding: 20px;"
         )
 
-        menu_layout.addWidget(logo)
+        menu_layout.addWidget(
+            logo
+        )
 
-        self.paginas = QStackedWidget()
+        self.paginas = (
+            QStackedWidget()
+        )
 
         self.dashboard = Dashboard(
             database
@@ -1784,9 +2415,11 @@ class MainWindow(QMainWindow):
             self.atualizar_telas
         )
 
-        self.fornecedores = FornecedoresPage(
-            database,
-            self.atualizar_telas
+        self.fornecedores = (
+            FornecedoresPage(
+                database,
+                self.atualizar_telas
+            )
         )
 
         self.vendas = VendasPage(
@@ -1798,6 +2431,10 @@ class MainWindow(QMainWindow):
             self.atualizar_telas
         )
 
+        self.relatorios = RelatoriosPage(
+            database
+        )
+
         paginas = [
             self.dashboard,
             self.caixa,
@@ -1807,6 +2444,7 @@ class MainWindow(QMainWindow):
             self.fornecedores,
             self.vendas,
             self.fluxo,
+            self.relatorios,
         ]
 
         for pagina in paginas:
@@ -1847,6 +2485,10 @@ class MainWindow(QMainWindow):
                 "Fluxo de Caixa",
                 self.fluxo
             ),
+            (
+                "Relatórios",
+                self.relatorios
+            ),
         ]
 
         for texto, pagina in botoes:
@@ -1855,7 +2497,8 @@ class MainWindow(QMainWindow):
             )
 
             botao.clicked.connect(
-                lambda checked=False, p=pagina:
+                lambda checked=False,
+                p=pagina:
                 self.abrir(p)
             )
 
@@ -1887,28 +2530,6 @@ class MainWindow(QMainWindow):
             saida
         )
 
-        for nome in [
-            "Relatórios",
-            "Configurações",
-        ]:
-            botao = QPushButton(
-                nome
-            )
-
-            botao.clicked.connect(
-                lambda checked=False, n=nome:
-                QMessageBox.information(
-                    self,
-                    "VS ERP",
-                    f"O módulo '{n}' será implementado "
-                    "na próxima versão."
-                )
-            )
-
-            menu_layout.addWidget(
-                botao
-            )
-
         menu_layout.addStretch()
 
         usuario_label = QLabel(
@@ -1917,20 +2538,15 @@ class MainWindow(QMainWindow):
         )
 
         usuario_label.setStyleSheet(
-            """
-            padding: 15px;
-            color: #94a3b8;
-            """
+            "padding: 15px;"
+            "color: #94a3b8;"
         )
 
         menu_layout.addWidget(
             usuario_label
         )
 
-        layout.addWidget(
-            menu
-        )
-
+        layout.addWidget(menu)
         layout.addWidget(
             self.paginas
         )
@@ -1951,6 +2567,7 @@ class MainWindow(QMainWindow):
         self.vendas.carregar()
         self.fluxo.carregar()
         self.caixa.carregar_produtos()
+        self.relatorios.atualizar()
 
     def entrada_estoque(self):
         if self.database.contar_produtos() == 0:
@@ -2042,6 +2659,7 @@ class MainWindow(QMainWindow):
 # ============================================================
 
 class Sistema:
+
     def __init__(self):
         self.app = QApplication(
             sys.argv
@@ -2078,6 +2696,11 @@ class Sistema:
                 padding: 8px;
                 font-weight: bold;
             }
+
+            QTabWidget::pane {
+                border: 1px solid #cbd5e1;
+                background: white;
+            }
             """
         )
 
@@ -2090,13 +2713,17 @@ class Sistema:
 
         self.login.show()
 
-    def abrir_sistema(self, usuario):
+    def abrir_sistema(
+        self,
+        usuario
+    ):
         self.janela = MainWindow(
             self.database,
             usuario
         )
 
         self.janela.show()
+
         self.login.close()
 
     def executar(self):
