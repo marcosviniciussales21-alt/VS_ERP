@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 import hashlib
-from datetime import datetime
+from datetime import datetime, date
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "vs_erp.db"
@@ -13,7 +13,9 @@ class Database:
         self.criar_admin_padrao()
 
     def conectar(self):
-        return sqlite3.connect(DB_PATH)
+        conexao = sqlite3.connect(DB_PATH)
+        conexao.execute("PRAGMA foreign_keys = ON")
+        return conexao
 
     @staticmethod
     def hash_senha(senha):
@@ -67,6 +69,29 @@ class Database:
                     estoque_atual REAL NOT NULL,
                     observacao TEXT,
                     data_hora TEXT NOT NULL,
+                    FOREIGN KEY (produto_id) REFERENCES produtos(id)
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS vendas (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    data_hora TEXT NOT NULL,
+                    total REAL NOT NULL DEFAULT 0,
+                    forma_pagamento TEXT,
+                    observacao TEXT
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS itens_venda (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    venda_id INTEGER NOT NULL,
+                    produto_id INTEGER NOT NULL,
+                    quantidade REAL NOT NULL,
+                    preco_unitario REAL NOT NULL,
+                    subtotal REAL NOT NULL,
+                    FOREIGN KEY (venda_id) REFERENCES vendas(id),
                     FOREIGN KEY (produto_id) REFERENCES produtos(id)
                 )
             """)
@@ -421,3 +446,218 @@ class Database:
             """)
 
             return cursor.fetchall()
+
+    def finalizar_venda(
+        self,
+        itens,
+        forma_pagamento="Dinheiro",
+        observacao=""
+    ):
+        if not itens:
+            raise ValueError("A venda não possui itens.")
+
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            total_venda = 0
+
+            # Validação de estoque antes de registrar qualquer coisa
+            for item in itens:
+                produto_id = item["produto_id"]
+                quantidade = float(item["quantidade"])
+
+                if quantidade <= 0:
+                    raise ValueError(
+                        "A quantidade dos itens deve ser maior que zero."
+                    )
+
+                cursor.execute("""
+                    SELECT nome, estoque, preco_venda
+                    FROM produtos
+                    WHERE id = ?
+                """, (produto_id,))
+
+                produto = cursor.fetchone()
+
+                if produto is None:
+                    raise ValueError("Produto não encontrado.")
+
+                nome = produto[0]
+                estoque = float(produto[1] or 0)
+
+                if quantidade > estoque:
+                    raise ValueError(
+                        f"Estoque insuficiente para o produto: {nome}"
+                    )
+
+            data_hora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+
+            cursor.execute("""
+                INSERT INTO vendas (
+                    data_hora,
+                    total,
+                    forma_pagamento,
+                    observacao
+                )
+                VALUES (?, ?, ?, ?)
+            """, (
+                data_hora,
+                0,
+                forma_pagamento,
+                observacao
+            ))
+
+            venda_id = cursor.lastrowid
+
+            for item in itens:
+                produto_id = item["produto_id"]
+                quantidade = float(item["quantidade"])
+
+                cursor.execute("""
+                    SELECT
+                        nome,
+                        estoque,
+                        preco_venda
+                    FROM produtos
+                    WHERE id = ?
+                """, (produto_id,))
+
+                produto = cursor.fetchone()
+
+                nome = produto[0]
+                estoque_anterior = float(produto[1] or 0)
+                preco_unitario = float(produto[2] or 0)
+
+                subtotal = quantidade * preco_unitario
+                estoque_atual = estoque_anterior - quantidade
+
+                total_venda += subtotal
+
+                cursor.execute("""
+                    INSERT INTO itens_venda (
+                        venda_id,
+                        produto_id,
+                        quantidade,
+                        preco_unitario,
+                        subtotal
+                    )
+                    VALUES (?, ?, ?, ?, ?)
+                """, (
+                    venda_id,
+                    produto_id,
+                    quantidade,
+                    preco_unitario,
+                    subtotal
+                ))
+
+                cursor.execute("""
+                    UPDATE produtos
+                    SET estoque = ?
+                    WHERE id = ?
+                """, (
+                    estoque_atual,
+                    produto_id
+                ))
+
+                cursor.execute("""
+                    INSERT INTO movimentacoes_estoque (
+                        produto_id,
+                        tipo,
+                        quantidade,
+                        estoque_anterior,
+                        estoque_atual,
+                        observacao,
+                        data_hora
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    produto_id,
+                    "VENDA",
+                    quantidade,
+                    estoque_anterior,
+                    estoque_atual,
+                    f"Venda #{venda_id} - {nome}",
+                    data_hora
+                ))
+
+            cursor.execute("""
+                UPDATE vendas
+                SET total = ?
+                WHERE id = ?
+            """, (
+                total_venda,
+                venda_id
+            ))
+
+            conexao.commit()
+
+            return venda_id, total_venda
+
+    def listar_vendas(self):
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute("""
+                SELECT
+                    id,
+                    data_hora,
+                    total,
+                    forma_pagamento,
+                    observacao
+                FROM vendas
+                ORDER BY id DESC
+            """)
+
+            return cursor.fetchall()
+
+    def listar_itens_venda(self, venda_id):
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute("""
+                SELECT
+                    p.codigo,
+                    p.nome,
+                    i.quantidade,
+                    i.preco_unitario,
+                    i.subtotal
+                FROM itens_venda i
+                INNER JOIN produtos p
+                    ON p.id = i.produto_id
+                WHERE i.venda_id = ?
+                ORDER BY i.id
+            """, (venda_id,))
+
+            return cursor.fetchall()
+
+    def total_vendas_hoje(self):
+        hoje = date.today().strftime("%d/%m/%Y")
+
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute("""
+                SELECT COALESCE(SUM(total), 0)
+                FROM vendas
+                WHERE data_hora LIKE ?
+            """, (
+                f"{hoje}%",
+            ))
+
+            return float(cursor.fetchone()[0] or 0)
+
+    def quantidade_vendas_hoje(self):
+        hoje = date.today().strftime("%d/%m/%Y")
+
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM vendas
+                WHERE data_hora LIKE ?
+            """, (
+                f"{hoje}%",
+            ))
+
+            return int(cursor.fetchone()[0] or 0)
