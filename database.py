@@ -108,3 +108,149 @@ class Database:
             cursor = conexao.cursor()
             cursor.execute("SELECT COUNT(*) FROM clientes")
             return cursor.fetchone()[0]
+
+    def cadastrar_produto(
+        self,
+        codigo,
+        nome,
+        categoria,
+        preco_compra,
+        preco_venda,
+        estoque,
+        estoque_minimo
+    ):
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute("""
+                INSERT INTO produtos (
+                    codigo,
+                    nome,
+                    categoria,
+                    preco_compra,
+                    preco_venda,
+                    estoque,
+                    estoque_minimo
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                codigo,
+                nome,
+                categoria,
+                preco_compra,
+                preco_venda,
+                estoque,
+                estoque_minimo
+            ))
+
+            conexao.commit()
+
+    def listar_produtos(self, pesquisa=""):
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            if pesquisa:
+                termo = f"%{pesquisa}%"
+
+                cursor.execute("""
+                    SELECT
+                        id,
+                        codigo,
+                        nome,
+                        categoria,
+                        preco_compra,
+                        preco_venda,
+                        estoque,
+                        estoque_minimo
+                    FROM produtos
+                    WHERE codigo LIKE ?
+                    OR nome LIKE ?
+                    OR categoria LIKE ?
+                    ORDER BY nome
+                """, (termo, termo, termo))
+
+            else:
+                cursor.execute("""
+                    SELECT
+                        id,
+                        codigo,
+                        nome,
+                        categoria,
+                        preco_compra,
+                        preco_venda,
+                        estoque,
+                        estoque_minimo
+                    FROM produtos
+                    ORDER BY nome
+                """)
+
+            return cursor.fetchall()
+
+    def buscar_produto_por_id(self, produto_id):
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute("""
+                SELECT
+                    id,
+                    codigo,
+                    nome,
+                    categoria,
+                    preco_compra,
+                    preco_venda,
+                    estoque,
+                    estoque_minimo
+                FROM produtos
+                WHERE id = ?
+            """, (produto_id,))
+
+            return cursor.fetchone()
+
+    def atualizar_produto(
+        self,
+        produto_id,
+        codigo,
+        nome,
+        categoria,
+        preco_compra,
+        preco_venda,
+        estoque,
+        estoque_minimo
+    ):
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute("""
+                UPDATE produtos
+                SET
+                    codigo = ?,
+                    nome = ?,
+                    categoria = ?,
+                    preco_compra = ?,
+                    preco_venda = ?,
+                    estoque = ?,
+                    estoque_minimo = ?
+                WHERE id = ?
+            """, (
+                codigo,
+                nome,
+                categoria,
+                preco_compra,
+                preco_venda,
+                estoque,
+                estoque_minimo,
+                produto_id
+            ))
+
+            conexao.commit()
+
+    def excluir_produto(self, produto_id):
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute(
+                "DELETE FROM produtos WHERE id = ?",
+                (produto_id,)
+            )
+
+            conexao.commit()
