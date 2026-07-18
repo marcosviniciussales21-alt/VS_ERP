@@ -60,6 +60,17 @@ class Database:
             """)
 
             cursor.execute("""
+                CREATE TABLE IF NOT EXISTS fornecedores (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nome TEXT NOT NULL,
+                    cpf_cnpj TEXT,
+                    telefone TEXT,
+                    email TEXT,
+                    endereco TEXT
+                )
+            """)
+
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS movimentacoes_estoque (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     produto_id INTEGER NOT NULL,
@@ -96,6 +107,19 @@ class Database:
                 )
             """)
 
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS fluxo_caixa (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    tipo TEXT NOT NULL,
+                    descricao TEXT NOT NULL,
+                    categoria TEXT,
+                    valor REAL NOT NULL,
+                    forma_pagamento TEXT,
+                    data_hora TEXT NOT NULL,
+                    observacao TEXT
+                )
+            """)
+
             conexao.commit()
 
     def criar_admin_padrao(self):
@@ -109,8 +133,12 @@ class Database:
 
             if cursor.fetchone() is None:
                 cursor.execute("""
-                    INSERT INTO usuarios
-                    (usuario, senha, nome, perfil)
+                    INSERT INTO usuarios (
+                        usuario,
+                        senha,
+                        nome,
+                        perfil
+                    )
                     VALUES (?, ?, ?, ?)
                 """, (
                     "admin",
@@ -133,9 +161,16 @@ class Database:
                 WHERE usuario = ?
                 AND senha = ?
                 AND ativo = 1
-            """, (usuario, senha_hash))
+            """, (
+                usuario,
+                senha_hash
+            ))
 
             return cursor.fetchone()
+
+    # =====================================================
+    # CONTADORES
+    # =====================================================
 
     def contar_produtos(self):
         with self.conectar() as conexao:
@@ -148,6 +183,16 @@ class Database:
             cursor = conexao.cursor()
             cursor.execute("SELECT COUNT(*) FROM clientes")
             return cursor.fetchone()[0]
+
+    def contar_fornecedores(self):
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+            cursor.execute("SELECT COUNT(*) FROM fornecedores")
+            return cursor.fetchone()[0]
+
+    # =====================================================
+    # PRODUTOS
+    # =====================================================
 
     def cadastrar_produto(
         self,
@@ -207,8 +252,11 @@ class Database:
                     OR nome LIKE ?
                     OR categoria LIKE ?
                     ORDER BY nome
-                """, (termo, termo, termo))
-
+                """, (
+                    termo,
+                    termo,
+                    termo
+                ))
             else:
                 cursor.execute("""
                     SELECT
@@ -242,7 +290,9 @@ class Database:
                     estoque_minimo
                 FROM produtos
                 WHERE id = ?
-            """, (produto_id,))
+            """, (
+                produto_id,
+            ))
 
             return cursor.fetchone()
 
@@ -294,6 +344,10 @@ class Database:
             )
 
             conexao.commit()
+
+    # =====================================================
+    # ESTOQUE
+    # =====================================================
 
     def registrar_entrada(self, produto_id, quantidade, observacao=""):
         if quantidade <= 0:
@@ -447,6 +501,10 @@ class Database:
 
             return cursor.fetchall()
 
+    # =====================================================
+    # VENDAS
+    # =====================================================
+
     def finalizar_venda(
         self,
         itens,
@@ -474,7 +532,9 @@ class Database:
                     SELECT nome, estoque
                     FROM produtos
                     WHERE id = ?
-                """, (produto_id,))
+                """, (
+                    produto_id,
+                ))
 
                 produto = cursor.fetchone()
 
@@ -519,7 +579,9 @@ class Database:
                         preco_venda
                     FROM produtos
                     WHERE id = ?
-                """, (produto_id,))
+                """, (
+                    produto_id,
+                ))
 
                 produto = cursor.fetchone()
 
@@ -588,6 +650,28 @@ class Database:
                 venda_id
             ))
 
+            # Lança automaticamente a venda como entrada no fluxo
+            cursor.execute("""
+                INSERT INTO fluxo_caixa (
+                    tipo,
+                    descricao,
+                    categoria,
+                    valor,
+                    forma_pagamento,
+                    data_hora,
+                    observacao
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                "ENTRADA",
+                f"Venda #{venda_id}",
+                "Vendas",
+                total_venda,
+                forma_pagamento,
+                data_hora,
+                observacao
+            ))
+
             conexao.commit()
 
             return venda_id, total_venda
@@ -625,7 +709,9 @@ class Database:
                     ON p.id = i.produto_id
                 WHERE i.venda_id = ?
                 ORDER BY i.id
-            """, (venda_id,))
+            """, (
+                venda_id,
+            ))
 
             return cursor.fetchall()
 
@@ -661,13 +747,11 @@ class Database:
 
             return int(cursor.fetchone()[0] or 0)
 
-    def cadastrar_cliente(
-        self,
-        nome,
-        cpf_cnpj,
-        telefone,
-        email
-    ):
+    # =====================================================
+    # CLIENTES
+    # =====================================================
+
+    def cadastrar_cliente(self, nome, cpf_cnpj, telefone, email):
         with self.conectar() as conexao:
             cursor = conexao.cursor()
 
@@ -714,7 +798,6 @@ class Database:
                     termo,
                     termo
                 ))
-
             else:
                 cursor.execute("""
                     SELECT
@@ -787,3 +870,331 @@ class Database:
             )
 
             conexao.commit()
+
+    # =====================================================
+    # FORNECEDORES
+    # =====================================================
+
+    def cadastrar_fornecedor(
+        self,
+        nome,
+        cpf_cnpj,
+        telefone,
+        email,
+        endereco
+    ):
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute("""
+                INSERT INTO fornecedores (
+                    nome,
+                    cpf_cnpj,
+                    telefone,
+                    email,
+                    endereco
+                )
+                VALUES (?, ?, ?, ?, ?)
+            """, (
+                nome,
+                cpf_cnpj,
+                telefone,
+                email,
+                endereco
+            ))
+
+            conexao.commit()
+
+    def listar_fornecedores(self, pesquisa=""):
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            if pesquisa:
+                termo = f"%{pesquisa}%"
+
+                cursor.execute("""
+                    SELECT
+                        id,
+                        nome,
+                        cpf_cnpj,
+                        telefone,
+                        email,
+                        endereco
+                    FROM fornecedores
+                    WHERE nome LIKE ?
+                    OR cpf_cnpj LIKE ?
+                    OR telefone LIKE ?
+                    OR email LIKE ?
+                    OR endereco LIKE ?
+                    ORDER BY nome
+                """, (
+                    termo,
+                    termo,
+                    termo,
+                    termo,
+                    termo
+                ))
+            else:
+                cursor.execute("""
+                    SELECT
+                        id,
+                        nome,
+                        cpf_cnpj,
+                        telefone,
+                        email,
+                        endereco
+                    FROM fornecedores
+                    ORDER BY nome
+                """)
+
+            return cursor.fetchall()
+
+    def buscar_fornecedor_por_id(self, fornecedor_id):
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute("""
+                SELECT
+                    id,
+                    nome,
+                    cpf_cnpj,
+                    telefone,
+                    email,
+                    endereco
+                FROM fornecedores
+                WHERE id = ?
+            """, (
+                fornecedor_id,
+            ))
+
+            return cursor.fetchone()
+
+    def atualizar_fornecedor(
+        self,
+        fornecedor_id,
+        nome,
+        cpf_cnpj,
+        telefone,
+        email,
+        endereco
+    ):
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute("""
+                UPDATE fornecedores
+                SET
+                    nome = ?,
+                    cpf_cnpj = ?,
+                    telefone = ?,
+                    email = ?,
+                    endereco = ?
+                WHERE id = ?
+            """, (
+                nome,
+                cpf_cnpj,
+                telefone,
+                email,
+                endereco,
+                fornecedor_id
+            ))
+
+            conexao.commit()
+
+    def excluir_fornecedor(self, fornecedor_id):
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute(
+                "DELETE FROM fornecedores WHERE id = ?",
+                (fornecedor_id,)
+            )
+
+            conexao.commit()
+
+    # =====================================================
+    # FLUXO DE CAIXA
+    # =====================================================
+
+    def cadastrar_movimento_caixa(
+        self,
+        tipo,
+        descricao,
+        categoria,
+        valor,
+        forma_pagamento,
+        observacao=""
+    ):
+        tipo = tipo.upper().strip()
+
+        if tipo not in ("ENTRADA", "SAÍDA"):
+            raise ValueError(
+                "O tipo deve ser ENTRADA ou SAÍDA."
+            )
+
+        if not descricao.strip():
+            raise ValueError(
+                "A descrição é obrigatória."
+            )
+
+        if valor <= 0:
+            raise ValueError(
+                "O valor deve ser maior que zero."
+            )
+
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute("""
+                INSERT INTO fluxo_caixa (
+                    tipo,
+                    descricao,
+                    categoria,
+                    valor,
+                    forma_pagamento,
+                    data_hora,
+                    observacao
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                tipo,
+                descricao.strip(),
+                categoria.strip(),
+                float(valor),
+                forma_pagamento.strip(),
+                datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+                observacao.strip()
+            ))
+
+            conexao.commit()
+
+    def listar_fluxo_caixa(self, pesquisa=""):
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            if pesquisa:
+                termo = f"%{pesquisa}%"
+
+                cursor.execute("""
+                    SELECT
+                        id,
+                        tipo,
+                        descricao,
+                        categoria,
+                        valor,
+                        forma_pagamento,
+                        data_hora,
+                        observacao
+                    FROM fluxo_caixa
+                    WHERE tipo LIKE ?
+                    OR descricao LIKE ?
+                    OR categoria LIKE ?
+                    OR forma_pagamento LIKE ?
+                    OR data_hora LIKE ?
+                    OR observacao LIKE ?
+                    ORDER BY id DESC
+                """, (
+                    termo,
+                    termo,
+                    termo,
+                    termo,
+                    termo,
+                    termo
+                ))
+            else:
+                cursor.execute("""
+                    SELECT
+                        id,
+                        tipo,
+                        descricao,
+                        categoria,
+                        valor,
+                        forma_pagamento,
+                        data_hora,
+                        observacao
+                    FROM fluxo_caixa
+                    ORDER BY id DESC
+                """)
+
+            return cursor.fetchall()
+
+    def excluir_movimento_caixa(self, movimento_id):
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute(
+                "DELETE FROM fluxo_caixa WHERE id = ?",
+                (movimento_id,)
+            )
+
+            conexao.commit()
+
+    def total_entradas_caixa(self):
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute("""
+                SELECT COALESCE(SUM(valor), 0)
+                FROM fluxo_caixa
+                WHERE tipo = 'ENTRADA'
+            """)
+
+            return float(cursor.fetchone()[0] or 0)
+
+    def total_saidas_caixa(self):
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute("""
+                SELECT COALESCE(SUM(valor), 0)
+                FROM fluxo_caixa
+                WHERE tipo = 'SAÍDA'
+            """)
+
+            return float(cursor.fetchone()[0] or 0)
+
+    def saldo_caixa(self):
+        return (
+            self.total_entradas_caixa()
+            - self.total_saidas_caixa()
+        )
+
+    def total_entradas_hoje(self):
+        hoje = date.today().strftime("%d/%m/%Y")
+
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute("""
+                SELECT COALESCE(SUM(valor), 0)
+                FROM fluxo_caixa
+                WHERE tipo = 'ENTRADA'
+                AND data_hora LIKE ?
+            """, (
+                f"{hoje}%",
+            ))
+
+            return float(cursor.fetchone()[0] or 0)
+
+    def total_saidas_hoje(self):
+        hoje = date.today().strftime("%d/%m/%Y")
+
+        with self.conectar() as conexao:
+            cursor = conexao.cursor()
+
+            cursor.execute("""
+                SELECT COALESCE(SUM(valor), 0)
+                FROM fluxo_caixa
+                WHERE tipo = 'SAÍDA'
+                AND data_hora LIKE ?
+            """, (
+                f"{hoje}%",
+            ))
+
+            return float(cursor.fetchone()[0] or 0)
+
+    def saldo_hoje(self):
+        return (
+            self.total_entradas_hoje()
+            - self.total_saidas_hoje()
+        )
