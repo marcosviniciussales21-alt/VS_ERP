@@ -3,6 +3,8 @@ import sqlite3
 from pathlib import Path
 from datetime import datetime
 
+from configuracoes_impressora_ui import ConfiguracoesImpressoraPage
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QApplication,
@@ -2432,10 +2434,13 @@ class MainWindow(QMainWindow):
         )
 
         self.relatorios = RelatoriosPage(
+        
             database
         )
-
+        self.configuracoes_impressora = ConfiguracoesImpressoraPage()
+        
         paginas = [
+
             self.dashboard,
             self.caixa,
             self.produtos,
@@ -2445,6 +2450,7 @@ class MainWindow(QMainWindow):
             self.vendas,
             self.fluxo,
             self.relatorios,
+            self.configuracoes_impressora,
         ]
 
         for pagina in paginas:
@@ -2489,7 +2495,11 @@ class MainWindow(QMainWindow):
                 "Relatórios",
                 self.relatorios
             ),
-        ]
+        (
+    "Configurações",
+    self.configuracoes_impressora
+),
+]
 
         for texto, pagina in botoes:
             botao = QPushButton(

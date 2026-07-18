@@ -4,7 +4,10 @@ import hashlib
 from datetime import datetime, date, timedelta
 
 BASE_DIR = Path(__file__).resolve().parent
-DB_PATH = BASE_DIR / "vs_erp.db"
+DADOS_DIR = BASE_DIR / "dados"
+DADOS_DIR.mkdir(exist_ok=True)
+
+DB_PATH = DADOS_DIR / "vs_erp.db"
 
 
 class Database:
